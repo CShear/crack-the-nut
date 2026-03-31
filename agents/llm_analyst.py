@@ -8,7 +8,7 @@ Supports both Anthropic and OpenAI SDKs.
 
 Usage::
 
-    analyst = LLMAnalyst(provider="anthropic", api_key="sk-ant-...")
+    analyst = LLMAnalyst(provider="anthropic", api_key="YOUR_API_KEY")
     result = await analyst.predict(
         question="Will BTC exceed $100K by end of Q2?",
         context="Current price: $95K, momentum bullish...",
