@@ -24,18 +24,17 @@ The natural flow: share your bot as its own repo → others learn from it → be
 ```
 crack-the-nut/
 ├── strategies/        # Pluggable strategy modules
-│   └── examples/      # Reference implementations to learn from
-├── exchanges/         # Exchange adapters (HL, Polymarket, Binance, DEXs)
-├── data/              # Market data collection & storage
-│   ├── collectors/    # Price feeds, order books, on-chain data
-│   └── storage/       # Time-series storage, DB schemas
-├── backtest/          # Backtesting engine — the arbiter of "does this work?"
-│   ├── engine/        # Core backtest runner
-│   └── datasets/      # Shared historical datasets
-├── execution/         # Order management, position sizing, risk controls
-├── agents/            # Agentic strategy wrappers (LLM-powered strategies)
-├── config/            # Per-user config templates (not committed)
-└── docs/              # Architecture docs, lessons learned, exchange gotchas
+│   └── examples/      # Reference implementations (funding arb, whale copy, multi-factor)
+├── exchanges/         # Exchange adapters (Hyperliquid, Polymarket, DEX/Web3)
+├── execution/         # Risk management — KellySizer, CorrelationTracker, GasGuard
+├── data/              # Async SQLite helper, Trade/Portfolio/Alert models
+├── config/            # Pydantic-settings base class for .env loading
+├── scoring/           # Multi-factor composite confidence scoring
+├── scheduler/         # APScheduler async runner with interval/cron jobs
+├── notify/            # Telegram bot with rate limiting and formatting
+├── backtest/          # Backtesting engine (Sharpe, drawdown, profit factor)
+├── agents/            # LLM ensemble analyst (temperature diversity, caching)
+└── docs/              # Architecture docs, exchange gotchas
 ```
 
 ## Quick Start
@@ -111,6 +110,15 @@ See `strategies/examples/` for working references.
 - **Logging:** structlog
 - **Config:** pydantic-settings, dotenv
 - **AI/Agents:** anthropic SDK, langchain, or whatever works — the `agents/` directory is agnostic
+
+## Reference Implementations
+
+These are sanitized versions of real trading bots built with this toolkit's patterns:
+
+- [ref-perp-bot](https://github.com/CShear/ref-perp-bot) — Perpetual futures (Hyperliquid)
+- [ref-prediction-bot](https://github.com/CShear/ref-prediction-bot) — Prediction markets (Polymarket)
+- [ref-lp-bot](https://github.com/CShear/ref-lp-bot) — Concentrated liquidity market making
+- [ref-subnet-monitor](https://github.com/CShear/ref-subnet-monitor) — Bittensor subnet research dashboard
 
 ## License
 
