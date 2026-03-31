@@ -1,124 +1,159 @@
 # crack-the-nut
 
-A shared trading toolkit for building, testing, and running automated strategies across multiple exchanges and asset types.
+A shared Python toolkit for building automated trading bots. Extract patterns once, reuse everywhere.
 
 **Goal:** Help us all toward financial independence so we have more resources to do everything else that matters.
 
-## How This Works
+## What Is This?
 
-This is a **mono-repo toolkit** — a shared framework where we all contribute strategies, exchange adapters, and backtesting tools. Everyone runs their own instance with their own keys and risk settings.
+This is a **library of composable modules** — not a framework, not a monolith. You pick the pieces you need and wire them into your own bot. Every module is async Python 3.12, battle-tested from 4 live trading bots.
 
-### What lives here vs. individual repos
+The toolkit handles the boring infrastructure (config, database, scheduling, notifications, risk management) so you can focus on **strategy**.
 
-| Here (crack-the-nut) | Individual repos (in the org) |
-|---|---|
-| Shared strategies anyone can use | Your personal bot, shared as-is |
-| Exchange adapters | Experimental/WIP projects |
-| Backtesting engine | Specialized tools |
-| Execution & risk management | Forks you're hacking on |
+## Modules
 
-The natural flow: share your bot as its own repo → others learn from it → best patterns get extracted into this toolkit → new strategies get built on proven components.
-
-## Repo Structure
-
-```
-crack-the-nut/
-├── strategies/        # Pluggable strategy modules
-│   └── examples/      # Reference implementations (funding arb, whale copy, multi-factor)
-├── exchanges/         # Exchange adapters (Hyperliquid, Polymarket, DEX/Web3)
-├── execution/         # Risk management — KellySizer, CorrelationTracker, GasGuard
-├── data/              # Async SQLite helper, Trade/Portfolio/Alert models
-├── config/            # Pydantic-settings base class for .env loading
-├── scoring/           # Multi-factor composite confidence scoring
-├── scheduler/         # APScheduler async runner with interval/cron jobs
-├── notify/            # Telegram bot with rate limiting and formatting
-├── backtest/          # Backtesting engine (Sharpe, drawdown, profit factor)
-├── agents/            # LLM ensemble analyst (temperature diversity, caching)
-└── docs/              # Architecture docs, exchange gotchas
-```
+| Module | Import | What it does |
+|--------|--------|-------------|
+| **config** | `from config import BotSettings` | Pydantic-settings base class. Loads from `.env`. Subclass to add your own fields. |
+| **data** | `from data import Database, Trade` | Async SQLite wrapper with `upsert`, `get_latest`, `get_range`, `insert_batch`. Common trade/signal/summary schemas included. |
+| **strategies** | `from strategies.base import Strategy, Signal` | Abstract base class — implement `on_data`, `should_enter`, `should_exit`. Same interface for backtesting and live. |
+| **exchanges** | `from exchanges.hyperliquid import HyperliquidAdapter` | Exchange adapters: Hyperliquid (perps), Polymarket (prediction markets), DEX/Web3 (Uniswap V3 style). All implement `ExchangeAdapter` interface. |
+| **execution** | `from execution import RiskManager, KellySizer` | Risk gates (position limits, daily loss, kill switch), half-Kelly position sizing, correlation group tracking, gas guards for on-chain bots. |
+| **scoring** | `from scoring import CompositeScorer, SubScore` | Register weighted sub-scores, get a 0-100 composite. Used for multi-factor signal generation. |
+| **backtest** | `from backtest import BacktestRunner` | Feed candles to a Strategy, get back win rate, PnL, Sharpe ratio, max drawdown, profit factor. |
+| **agents** | `from agents import LLMAnalyst` | Ensemble LLM predictions (3 temperatures, take median). Confidence from variance. 2-hour cache. Anthropic or OpenAI. |
+| **scheduler** | `from scheduler import SchedulerRunner` | APScheduler wrapper — `add_interval()`, `add_cron()`, graceful shutdown on SIGINT/SIGTERM. |
+| **notify** | `from notify import TelegramNotifier` | Telegram alerts with rate limiting (20 msg/min). Formatting helpers for trades, signals, daily reports. |
 
 ## Quick Start
 
 ```bash
-# Clone
-git clone git@github.com:crack-the-nut/crack-the-nut.git
+git clone https://github.com/CShear/crack-the-nut.git
 cd crack-the-nut
-
-# Set up Python environment
-python3 -m venv .venv
-source .venv/bin/activate
+python3 -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
-
-# Copy config template, fill in your keys
-cp config/example.env .env
-
-# Run a backtest
-python -m backtest.engine --strategy strategies/examples/funding_arb.py --data backtest/datasets/sample.csv
-
-# Run a strategy live (paper mode by default)
-python -m execution.runner --strategy strategies/examples/funding_arb.py --paper
 ```
 
-## Writing a Strategy
+## Building a Bot
 
-Every strategy implements a simple interface:
+### 1. Create your config
 
 ```python
-from strategies.base import Strategy, Signal
+# my_bot/config.py
+from config import BotSettings
 
-class MyStrategy(Strategy):
-    """One-line description of what this does."""
-
-    async def on_data(self, candle):
-        """Called on every new data point."""
-        # Your analysis here
-        pass
-
-    async def should_enter(self) -> Signal | None:
-        """Return a Signal to enter, or None to skip."""
-        pass
-
-    async def should_exit(self, position) -> bool:
-        """Return True to close the position."""
-        pass
+class MySettings(BotSettings):
+    exchange_api_key: str = ""
+    my_custom_threshold: float = 0.05
 ```
 
-See `strategies/examples/` for working references.
+### 2. Write a strategy
 
-## How We Work Together
+```python
+# my_bot/strategy.py
+from strategies.base import Strategy, Signal, Candle, Direction
 
-- **Telegram group** — Real-time discussion, quick questions, sharing wins/losses
-- **GitHub Issues** — Track bugs, feature requests, strategy ideas
-- **GitHub Discussions** — Longer-form strategy analysis, architecture proposals
-- **Weekly roundup** — Each person posts in Telegram: what they ran, PnL, one lesson learned
-- **PRs welcome** — Add strategies, fix exchange adapters, improve the backtest engine
+class MyStrategy(Strategy):
+    async def on_data(self, candle: Candle) -> None:
+        pass  # analyze new data
 
-## Ground Rules
+    async def should_enter(self) -> Signal | None:
+        return Signal(asset="BTC", direction=Direction.LONG, confidence=0.8, entry_price=65000)
 
-1. **No API keys or wallet keys in the repo.** Use `.env` files (gitignored).
-2. **Backtest before you deploy.** The backtest engine is the arbiter of "does this work?"
-3. **Document your strategies.** A strategy without a README is a strategy nobody else can use.
-4. **Share losses too.** We learn more from what didn't work.
-5. **Risk management is not optional.** Every strategy must have stop-losses and position limits.
+    async def should_exit(self, position) -> bool:
+        return False  # your exit logic
+```
 
-## Stack
+### 3. Backtest it
 
-- **Language:** Python 3.12+
-- **Async:** asyncio throughout
-- **Exchanges:** httpx + websockets for REST/WS, exchange-specific SDKs where helpful
-- **Data:** aiosqlite for local storage, pandas for analysis
-- **Logging:** structlog
-- **Config:** pydantic-settings, dotenv
-- **AI/Agents:** anthropic SDK, langchain, or whatever works — the `agents/` directory is agnostic
+```python
+from backtest import BacktestRunner
+from my_bot.strategy import MyStrategy
+
+runner = BacktestRunner(MyStrategy(), initial_capital=10_000)
+result = await runner.run(candles)
+print(result.summary)
+# {'total_trades': 47, 'win_rate': '57.4%', 'total_pnl': 1230.50,
+#  'max_drawdown': '8.3%', 'sharpe_ratio': 1.82, 'profit_factor': 1.65}
+```
+
+### 4. Wire up live execution
+
+```python
+from exchanges.hyperliquid import HyperliquidAdapter
+from execution import RiskManager, KellySizer
+from scheduler import SchedulerRunner
+from notify import TelegramNotifier
+
+adapter = HyperliquidAdapter(private_key="...", account_address="...")
+risk = RiskManager(bankroll=1000.0)
+sizer = KellySizer(max_pct=0.05)
+notifier = TelegramNotifier(token="...", chat_id="...", prefix="[MY BOT]")
+
+# Schedule your strategy loop, daily reports, etc.
+runner = SchedulerRunner(timezone="America/New_York")
+runner.add_interval("check_signals", my_strategy_loop, minutes=5)
+runner.add_cron("daily_report", send_daily_report, hour=23, minute=59)
+await runner.run_forever()
+```
+
+### 5. Deploy
+
+```bash
+# On a VPS (we use Hetzner, $3-5/mo):
+pip install -e .
+cp .env.example .env  # fill in your keys
+# Create a systemd service, start with paper_trade=True
+```
+
+See [docs/architecture.md](docs/architecture.md) for the full design walkthrough and directory conventions.
+
+## Example Strategies
+
+Three reference strategies in `strategies/examples/`:
+
+- **`funding_arb.py`** — Short when funding rates are extreme positive, long when extreme negative. Collects funding payments.
+- **`whale_copy.py`** — Track large wallets, copy their trades when multiple whales converge on the same direction within a time window.
+- **`multi_factor_signal.py`** — Combine whale consensus, AI predictions, and price momentum into a single scored signal using `CompositeScorer`.
+
+## Exchange Notes
+
+Hard-won gotchas from production in [docs/exchange-notes.md](docs/exchange-notes.md):
+
+- **Hyperliquid** — sync SDK wrapping, unified accounts, WS trade format, funding mechanics
+- **Polymarket** — negRisk detection, FOK pricing, Gamma API bugs, CLOB order placement
+- **DEX/LP** — tick math, slippage, nonce management, Algebra vs Uniswap V3 differences
+- **Bittensor** — Taostats API, alpha price normalization, emission yield calculation
 
 ## Reference Implementations
 
-These are sanitized versions of real trading bots built with this toolkit's patterns:
+Sanitized versions of real trading bots built with these patterns:
 
-- [ref-perp-bot](https://github.com/CShear/ref-perp-bot) — Perpetual futures (Hyperliquid)
-- [ref-prediction-bot](https://github.com/CShear/ref-prediction-bot) — Prediction markets (Polymarket)
-- [ref-lp-bot](https://github.com/CShear/ref-lp-bot) — Concentrated liquidity market making
-- [ref-subnet-monitor](https://github.com/CShear/ref-subnet-monitor) — Bittensor subnet research dashboard
+- [ref-perp-bot](https://github.com/CShear/ref-perp-bot) — Perpetual futures (Hyperliquid). 3 strategies, signal combiner, Telegram alerts.
+- [ref-prediction-bot](https://github.com/CShear/ref-prediction-bot) — Prediction markets (Polymarket). Whale tracking + AI ensemble.
+- [ref-lp-bot](https://github.com/CShear/ref-lp-bot) — Concentrated liquidity market making. Uniswap V3, Aerodrome, Algebra.
+- [ref-subnet-monitor](https://github.com/CShear/ref-subnet-monitor) — Bittensor subnet health dashboard. Scoring, signals, alerts.
+
+## Ground Rules
+
+1. **No secrets in the repo.** API keys, private keys, wallet addresses go in `.env` (gitignored).
+2. **Backtest before you deploy.** The backtest engine exists for a reason.
+3. **Document your strategies.** A strategy without docs is a strategy nobody else can use.
+4. **Share losses too.** We learn more from what didn't work.
+5. **Risk management is not optional.** Every strategy needs stop-losses and position limits.
+
+## Stack
+
+- Python 3.12+, async throughout
+- `pydantic-settings` — config from `.env`
+- `aiosqlite` — async SQLite
+- `httpx` + `websockets` — REST/WS
+- `structlog` — structured logging
+- `APScheduler` — job scheduling
+- `python-telegram-bot` — notifications
+- `pandas` — data analysis
+- Exchange SDKs: `hyperliquid-python-sdk`, `py-clob-client`, `web3` (all optional)
+- AI: `anthropic`, `openai` (optional)
 
 ## License
 
