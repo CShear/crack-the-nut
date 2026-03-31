@@ -108,9 +108,8 @@ A signal combiner resolves conflicts, applies Kelly-inspired sizing, and caps co
 - Mar 7-8: Scanner + paper trading validation (5 pools x $500)
 - Mar 12: Go-live on Base cbBTC/USDC (Uniswap V3, 0.05% fee tier) with $1,146 portfolio
 - Mar 12-14: Lost $49 in 45 hours. Root cause: micro-fees at 0.05% tier + rebalancing overhead
-- Mar 14: Pivoted to Hydrex kVCM/USDC strategy (Algebra Integral, 164% stated APR from HYDX emissions)
+- Mar 14: Pivoted to exploring emission-rich pools (Algebra Integral DEXs with farming rewards)
 - Mar 16: Algebra Integral support complete, gauge staking added
-- Mar 24: kVCM price support blitz — $16.9K spent, moved price $0.058 to $0.076 (+30%) in under 3 minutes
 
 ### Results
 
@@ -118,7 +117,6 @@ A signal combiner resolves conflicts, applies Kelly-inspired sizing, and caps co
 |-------|----------|:-----------:|:---------:|:--:|:-------:|
 | Paper (5 pools) | ~2 hours | $57.25 | $3.65 | $5.37 | +$54.13 |
 | Live cbBTC/USDC | 45 hours | minimal | significant | yes | -$49.00 |
-| kVCM Blitz | 2 min 50s | n/a | ~$50 | n/a | 258K kVCM acquired |
 
 **Time 0 baseline (Mar 12):** $1,146.23 total ($967.92 in LP position, $77.35 wallet USDC, $100.97 ETH for gas). BTC at $70,290.
 
@@ -128,13 +126,11 @@ A signal combiner resolves conflicts, applies Kelly-inspired sizing, and caps co
 
 **Live was a different story.** The 0.05% fee tier on cbBTC/USDC generates micro-fees per swap. With 10-minute rebalancing, swap fees and gas costs from rebalancing exceeded fee income. Lost $49 in 45 hours.
 
-**The pivot to Hydrex/kVCM was the key insight.** Pure trading fees at $500-1K scale on major pairs are insufficient. You need emission rewards on top. Hydrex offered 164% stated APR on kVCM/USDC from HYDX token emissions, which completely changes the economics.
-
-**The blitz tool became the most impactful output.** Built a rapid-fire multi-pool buy executor that alternates between Hydrex CLMM and Aerodrome V2 to drain both order books simultaneously. Moved kVCM price 30% in under 3 minutes with $16.9K, outrunning 5 active arb bots. Price held post-execution.
+**The key insight was that pure trading fees aren't enough at small scale.** You need pools with emission rewards (farming programs, gauge incentives) to make the economics work. This led to exploring Algebra Integral DEXs that offer token emissions on top of trading fees.
 
 ### What we learned
 
-- **Concentrated liquidity at small scale needs emission rewards.** On $500-1K positions, trading fees alone (especially on 0.05% tier pools) don't cover rebalancing costs. You need pools with farming rewards (HYDX, AERO, etc.) to be profitable.
+- **Concentrated liquidity at small scale needs emission rewards.** On $500-1K positions, trading fees alone (especially on 0.05% tier pools) don't cover rebalancing costs. You need pools with farming rewards (gauge emissions, etc.) to be profitable.
 - **Paper trading overstated returns by ~10x.** Paper assumed instant fills at market price with no slippage. Real swaps on thin books had 0.5-2% slippage per rebalance, which compounds quickly at 10-minute intervals.
 - **Algebra Integral (Hydrex) requires different ABIs everywhere.** `globalState()` vs `slot0()`, 8-param swap router vs 7-param, deployer field in mint, different position tuple ordering. Every integration point was slightly different from Uniswap V3.
 - **On-chain NAV is the only source of truth.** Early versions tracked fees cumulatively, which overstated returns by including wallet buffer USDC. The fix was reading on-chain balances directly (position value + wallet tokens + ETH).
@@ -145,7 +141,7 @@ A signal combiner resolves conflicts, applies Kelly-inspired sizing, and caps co
 - **Target emission-rich pools only.** Don't bother with pure fee-tier pools at small scale. Filter for pools with active farming programs (gauges, Merkl, etc.) and factor emission APR into the pool scorer.
 - **Model rebalancing costs in the scoring.** Current scanner scores pools by volume and spread but doesn't factor in gas cost per rebalance. On Base ($0.01-0.10 per tx), this is fine, but on mainnet it would be fatal.
 - **Build a proper IL model.** Current IL tracking is retrospective. A forward-looking model that predicts IL from volatility and adjusts range width accordingly would reduce unnecessary rebalances.
-- **Auto-compound rewards.** The Hydrex strategy includes oHYDX harvesting code but it's not yet integrated into the rebalance loop. Harvesting rewards and compounding them into the LP position would meaningfully increase returns.
+- **Auto-compound rewards.** When targeting emission-rich pools, harvesting and compounding farming rewards back into the LP position would meaningfully increase returns.
 
 ---
 
@@ -180,7 +176,7 @@ The backtest infrastructure and outcome tracking already exist (especially in th
 |-----|:--------:|:-----------:|:--------:|:-------:|--------|
 | Polymarket | $100 | 58 | 37.9% | -$13.40 | Paused — needs execution cost modeling |
 | Hyperliquid | $599 | 11 | 54.5% | +$7.06 | Running — needs exit logic fixes |
-| LP Bot | $1,146 | ~45h live | n/a | -$49.00 | Pivoted to kVCM/Hydrex strategy |
+| LP Bot | $1,146 | ~45h live | n/a | -$49.00 | Pivoted to emission-rich pools |
 
 **Total capital deployed:** ~$1,845
 **Total live PnL:** ~-$55
