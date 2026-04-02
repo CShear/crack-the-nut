@@ -10,6 +10,9 @@ Modules:
     store       — append-only Parquet store for historical fingerprints
     finder      — KNN analog search with weighted similarity
     scorer      — score strategy performance across an analog set
+    meta        — meta-controller: strategy selection + risk allocation
+    walkforward — walk-forward evaluation pipeline
+    champion    — champion/challenger comparison arena
 """
 
 from analog.fingerprint import Fingerprint, FingerprintEngine
@@ -17,6 +20,9 @@ from analog.surface import FundingSurface, FundingSurfaceEngine
 from analog.store import FingerprintStore
 from analog.finder import AnalogFinder, AnalogMatch
 from analog.scorer import AnalogScorer, StrategyScore
+from analog.meta import MetaController, Decision, StrategyProfile, DEFAULT_PROFILES
+from analog.walkforward import WalkForward, WalkForwardResults, WalkForwardStep
+from analog.champion import Arena, ChallengerConfig, ChallengerResult, ArenaResults
 
 __all__ = [
     "Fingerprint",
@@ -28,4 +34,15 @@ __all__ = [
     "AnalogMatch",
     "AnalogScorer",
     "StrategyScore",
+    "MetaController",
+    "Decision",
+    "StrategyProfile",
+    "DEFAULT_PROFILES",
+    "WalkForward",
+    "WalkForwardResults",
+    "WalkForwardStep",
+    "Arena",
+    "ChallengerConfig",
+    "ChallengerResult",
+    "ArenaResults",
 ]
