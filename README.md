@@ -24,6 +24,9 @@ The toolkit handles the boring infrastructure (config, database, scheduling, not
 | **agents** | `from agents import LLMAnalyst` | Ensemble LLM predictions (3 temperatures, take median). Confidence from variance. 2-hour cache. Anthropic or OpenAI. |
 | **scheduler** | `from scheduler import SchedulerRunner` | APScheduler wrapper — `add_interval()`, `add_cron()`, graceful shutdown on SIGINT/SIGTERM. |
 | **notify** | `from notify import TelegramNotifier` | Telegram alerts with rate limiting (20 msg/min). Formatting helpers for trades, signals, daily reports. |
+| **analog** | `from analog import AnalogFinder, MetaController` | Similarity-based strategy selection: fingerprint the market, find historical analogs via KNN, score strategies, pick the best one. |
+| **analog.walkforward** | `from analog import WalkForward` | Walk-forward evaluation: step through history, fit on past-only data, measure actual outcomes. No lookahead. |
+| **analog.champion** | `from analog import Arena, ChallengerConfig` | Champion/challenger arena: compare configurations via walk-forward, replace only when a challenger beats the champion with margin. |
 
 ## Quick Start
 

@@ -415,8 +415,8 @@ This blueprint builds on the crack-the-nut toolkit modules:
 | Exchange adapters      | `exchanges/`                         | Ready (HL, PM, DEX)                           |
 | Scheduling             | `scheduler/runner.py`                | Ready                                         |
 | Notifications          | `notify/telegram.py`                 | Ready                                         |
-| **Regime engine**      | —                                    | **To build**                                  |
-| **Meta-controller**    | —                                    | **To build**                                  |
-| **Feature engine**     | —                                    | **To build**                                  |
-| **Walk-forward evaluator** | —                                | **To build**                                  |
-| **Champion/challenger** | —                                   | **To build**                                  |
+| Regime engine          | `analog/fingerprint.py`, `analog/finder.py` | Ready (analog memory approach — KNN similarity, not discrete labels) |
+| Meta-controller        | `analog/meta.py`                     | Ready (strategy selection + parameter profiles + risk allocation) |
+| Feature engine         | `analog/fingerprint.py`, `analog/surface.py` | Ready (25 features: price, vol, momentum, funding surface) |
+| Walk-forward evaluator | `analog/walkforward.py`              | Ready (purged walk-forward, no lookahead, sit-out accuracy) |
+| Champion/challenger    | `analog/champion.py`                 | Ready (arena comparison, composite scoring, replacement threshold) |
