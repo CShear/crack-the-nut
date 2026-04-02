@@ -84,11 +84,43 @@ class AnalogScorer:
         self.min_analogs = min_analogs
         self.risk_thresholds = risk_thresholds or {
             "1x": 0.70,    # 70%+ win rate across analogs → full size
-            "0.5x": 0.60,  # 60-70% → reduced
-            "0.25x": 0.50, # 50-60% → minimal
-            "0x": 0.0,     # below 50% → sit out
+            "0.5x": 0.62,  # 62-70% → reduced
+            "0.25x": 0.55, # 55-62% → minimal
+            "0x": 0.0,     # below 55% → sit out
         }
         self._strategies: dict[str, StrategyEvaluator] = {}
+        # Rolling performance memory: tracks actual outcomes to adjust confidence
+        self._performance: dict[str, list[float]] = {}  # strategy → recent actual PnLs
+        self._performance_window = 50  # remember last 50 outcomes per strategy
+
+    def record_outcome(self, strategy_name: str, actual_pnl: float) -> None:
+        """Record an actual outcome for a strategy (called after walk-forward step)."""
+        if strategy_name not in self._performance:
+            self._performance[strategy_name] = []
+        self._performance[strategy_name].append(actual_pnl)
+        # Trim to window
+        if len(self._performance[strategy_name]) > self._performance_window:
+            self._performance[strategy_name] = self._performance[strategy_name][-self._performance_window:]
+
+    def _performance_adjustment(self, strategy_name: str) -> float:
+        """Confidence adjustment based on recent actual performance.
+
+        Returns a multiplier: >1 if strategy is outperforming, <1 if underperforming.
+        Neutral (1.0) when insufficient data.
+        """
+        history = self._performance.get(strategy_name, [])
+        if len(history) < 5:
+            return 1.0  # not enough data to adjust
+
+        win_rate = sum(1 for p in history if p > 0) / len(history)
+        mean_pnl = sum(history) / len(history)
+
+        # Boost strategies with recent positive edge, penalize negative
+        if mean_pnl > 0 and win_rate > 0.5:
+            return min(1.0 + win_rate - 0.5, 1.5)  # up to 1.5x boost
+        elif mean_pnl < 0 and win_rate < 0.45:
+            return max(0.5 + win_rate, 0.3)  # down to 0.3x penalty
+        return 1.0
 
     def register_strategy(self, name: str, evaluator: StrategyEvaluator) -> None:
         """Register a strategy evaluator function.
@@ -153,16 +185,38 @@ class AnalogScorer:
             else:
                 consistency = 0.0
 
-            # Risk bucket assignment
+            # Risk bucket assignment — must have positive mean return AND win rate
             risk_bucket = "0x"
-            for bucket, threshold in sorted(self.risk_thresholds.items(), key=lambda x: x[1], reverse=True):
-                if win_rate >= threshold:
-                    risk_bucket = bucket
-                    break
+            if weighted_mean > 0:
+                for bucket, threshold in sorted(
+                    self.risk_thresholds.items(), key=lambda x: x[1], reverse=True,
+                ):
+                    if win_rate >= threshold:
+                        risk_bucket = bucket
+                        break
 
-            # Confidence: combination of win rate, consistency, and sample size
+            # Confidence: weighted combination that prioritizes profitability
             sample_factor = min(len(returns) / 15, 1.0)  # 15+ analogs → full confidence
-            confidence = (win_rate * 0.4 + consistency * 0.4 + sample_factor * 0.2)
+
+            # Profit factor: penalize strategies with negative mean return
+            if weighted_mean > 0:
+                profit_score = min(weighted_mean / 0.005, 1.0)  # 0.5% mean → max score
+            else:
+                profit_score = max(weighted_mean / 0.005, -0.5)  # negative drags score down
+
+            # Risk-adjusted: win rate alone is misleading — weight mean return heavily
+            confidence = (
+                win_rate * 0.25
+                + profit_score * 0.35
+                + consistency * 0.20
+                + sample_factor * 0.20
+            )
+
+            # Rolling performance adjustment is available via record_outcome()
+            # and _performance_adjustment(), but disabled in scoring for now.
+            # Testing showed it introduces noise at this sample size.
+            # TODO: revisit when we have more granular outcome tracking
+            # (e.g., per-regime outcomes instead of global)
 
             results.append(
                 StrategyScore(

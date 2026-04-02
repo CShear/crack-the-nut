@@ -33,6 +33,7 @@ import structlog
 from analog.evaluators import StrategyEvaluator
 from analog.finder import AnalogFinder
 from analog.fingerprint import Fingerprint
+from analog.meta import MetaController
 from analog.scorer import AnalogScorer, StrategyScore
 
 logger = structlog.get_logger()
@@ -242,7 +243,7 @@ class WalkForward:
             )
             return results
 
-        # Build scorer once (evaluators are stateless closures over historical data)
+        # Build scorer (evaluators are stateless closures over historical data)
         scorer = AnalogScorer(forward_hours=self.forward_hours)
         for name, evaluator in self.evaluators.items():
             scorer.register_strategy(name, evaluator)
@@ -265,12 +266,15 @@ class WalkForward:
             )
             finder.fit(history)
 
-            # Query for analogs
-            matches = finder.query(query)
-            quality = finder.analog_quality(matches)
+            # Use meta-controller for full decision pipeline (confidence gates + risk adjustment)
+            controller = MetaController(finder=finder, scorer=scorer, k=self.k)
+            decision = controller.decide(query)
+            quality = finder.analog_quality(finder.query(query))
 
-            # Get recommendation
-            recommendation = scorer.recommend(matches)
+            # Convert decision to StrategyScore for compatibility
+            recommendation: StrategyScore | None = None
+            if decision.should_trade and decision.score is not None:
+                recommendation = decision.score
 
             # Record actual forward returns for ALL strategies
             actual_returns: dict[str, float | None] = {}
@@ -288,6 +292,13 @@ class WalkForward:
                 n_history=len(history),
             )
             results.steps.append(step)
+
+            # Feed actual outcome back to scorer — only for the SELECTED strategy
+            # (recording all strategies at every step adds noise, not signal)
+            if recommendation is not None:
+                actual = actual_returns.get(recommendation.strategy_name)
+                if actual is not None:
+                    scorer.record_outcome(recommendation.strategy_name, actual)
 
             if verbose and (step_num + 1) % 50 == 0:
                 traded = results.n_traded
