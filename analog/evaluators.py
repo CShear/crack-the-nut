@@ -145,6 +145,124 @@ class HistoricalData:
         var = sum((r - mean) ** 2 for r in log_rets) / len(log_rets)
         return math.sqrt(var)
 
+    def closes(self, asset: str, ts: float, n_bars: int) -> list[float]:
+        """Get the last n_bars close prices ending at or before ts."""
+        candles = self.get_recent_candles(asset, ts, n_bars)
+        return [c.close for c in candles]
+
+    def backward_return(self, asset: str, ts: float, lookback_hours: float) -> float | None:
+        """Return over the past lookback_hours ending at ts."""
+        return self.forward_return(asset, ts - lookback_hours * 3600, lookback_hours)
+
+    def sma(self, asset: str, ts: float, period: int) -> float | None:
+        """Simple moving average of close prices over `period` bars."""
+        prices = self.closes(asset, ts, period)
+        if len(prices) < period:
+            return None
+        return sum(prices) / len(prices)
+
+    def ema(self, asset: str, ts: float, period: int) -> float | None:
+        """Exponential moving average of close prices."""
+        prices = self.closes(asset, ts, period * 2)  # need extra for warmup
+        if len(prices) < period:
+            return None
+        alpha = 2.0 / (period + 1)
+        ema_val = prices[0]
+        for p in prices[1:]:
+            ema_val = alpha * p + (1 - alpha) * ema_val
+        return ema_val
+
+    def rsi(self, asset: str, ts: float, period: int = 14) -> float | None:
+        """Relative Strength Index."""
+        candles = self.get_recent_candles(asset, ts, period + 2)
+        if len(candles) < period + 1:
+            return None
+        gains = []
+        losses = []
+        for i in range(1, len(candles)):
+            diff = candles[i].close - candles[i - 1].close
+            if diff > 0:
+                gains.append(diff)
+                losses.append(0.0)
+            else:
+                gains.append(0.0)
+                losses.append(abs(diff))
+        if not gains:
+            return 50.0
+        avg_gain = sum(gains[-period:]) / period
+        avg_loss = sum(losses[-period:]) / period
+        if avg_loss == 0:
+            return 100.0
+        rs = avg_gain / avg_loss
+        return 100.0 - (100.0 / (1.0 + rs))
+
+    def bollinger(self, asset: str, ts: float, period: int = 20, mult: float = 2.0
+                  ) -> tuple[float, float, float] | None:
+        """Bollinger Bands: (lower, middle, upper)."""
+        prices = self.closes(asset, ts, period)
+        if len(prices) < period:
+            return None
+        mid = sum(prices) / len(prices)
+        var = sum((p - mid) ** 2 for p in prices) / len(prices)
+        std = math.sqrt(var)
+        return (mid - mult * std, mid, mid + mult * std)
+
+    def atr(self, asset: str, ts: float, period: int) -> float | None:
+        """Average True Range over `period` bars."""
+        candles = self.get_recent_candles(asset, ts, period + 1)
+        if len(candles) < period + 1:
+            return None
+        trs = []
+        for i in range(1, len(candles)):
+            tr = max(
+                candles[i].high - candles[i].low,
+                abs(candles[i].high - candles[i - 1].close),
+                abs(candles[i].low - candles[i - 1].close),
+            )
+            trs.append(tr)
+        return sum(trs) / len(trs) if trs else None
+
+    def donchian(self, asset: str, ts: float, period: int
+                 ) -> tuple[float, float] | None:
+        """Donchian Channel: (lowest low, highest high) over period bars."""
+        candles = self.get_recent_candles(asset, ts, period)
+        if len(candles) < period:
+            return None
+        return (min(c.low for c in candles), max(c.high for c in candles))
+
+    def keltner(self, asset: str, ts: float, period: int = 20, mult: float = 1.5
+                ) -> tuple[float, float, float] | None:
+        """Keltner Channel: (lower, middle, upper)."""
+        ema_val = self.ema(asset, ts, period)
+        atr_val = self.atr(asset, ts, period)
+        if ema_val is None or atr_val is None:
+            return None
+        return (ema_val - mult * atr_val, ema_val, ema_val + mult * atr_val)
+
+    def funding_window(self, ts: float, n_bars: int) -> list[dict[str, float]]:
+        """Get funding rate snapshots for the last n_bars (4h each)."""
+        result = []
+        bar_ms_now = int((ts * 1000) // (4 * 3600 * 1000)) * (4 * 3600 * 1000)
+        for i in range(n_bars):
+            bar_ms = bar_ms_now - i * (4 * 3600 * 1000)
+            rates = self._funding_by_bar.get(bar_ms, {})
+            if rates:
+                result.append(rates)
+        result.reverse()  # chronological order
+        return result
+
+    def funding_asset_history(self, asset: str, ts: float, n_bars: int) -> list[float]:
+        """Get funding rate history for one asset over n_bars (4h each)."""
+        result = []
+        bar_ms_now = int((ts * 1000) // (4 * 3600 * 1000)) * (4 * 3600 * 1000)
+        for i in range(n_bars):
+            bar_ms = bar_ms_now - i * (4 * 3600 * 1000)
+            rates = self._funding_by_bar.get(bar_ms, {})
+            if asset in rates:
+                result.append(rates[asset])
+        result.reverse()
+        return result
+
 
 # --- Strategy Evaluators ---
 
@@ -361,13 +479,23 @@ def build_evaluators(
     """Build all strategy evaluators from backfilled data.
 
     Returns a dict of name → evaluator suitable for AnalogScorer.register_strategy().
+    Includes the original 5 + all 25 established strategies from strategies.py.
     """
+    from analog.strategies import build_all_evaluators
+
     data = HistoricalData(candles, funding)
 
-    return {
+    # Original 5 (kept for backwards compatibility)
+    original = {
         "funding_arb": _make_funding_arb(data),
         "multi_asset_funding": _make_multi_asset_funding(data),
         "trend_follow": _make_trend_follow(data),
         "mean_reversion": _make_mean_reversion(data),
         "breakout": _make_breakout(data),
     }
+
+    # 25 established strategies
+    established = build_all_evaluators(data)
+
+    # Merge (established strategies take precedence on name conflicts)
+    return {**original, **established}
