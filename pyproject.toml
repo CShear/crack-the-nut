@@ -44,7 +44,7 @@ dex = [
 ]
 
 [tool.setuptools.packages.find]
-include = ["strategies*", "exchanges*", "data*", "backtest*", "execution*", "agents*", "config*", "scheduler*", "notify*", "scoring*"]
+include = ["strategies*", "exchanges*", "data*", "backtest*", "execution*", "agents*", "config*", "scheduler*", "notify*", "scoring*", "analog*"]
 
 [tool.ruff]
 target-version = "py312"
