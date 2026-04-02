@@ -482,6 +482,7 @@ def build_evaluators(
     Includes the original 5 + all 25 established strategies from strategies.py.
     """
     from analog.strategies import build_all_evaluators
+    from analog.contrarian import build_contrarian_evaluators
 
     data = HistoricalData(candles, funding)
 
@@ -497,5 +498,8 @@ def build_evaluators(
     # 25 established strategies
     established = build_all_evaluators(data)
 
-    # Merge (established strategies take precedence on name conflicts)
-    return {**original, **established}
+    # 9 contrarian strategies (flipped signals, consensus fade, etc.)
+    contrarian = build_contrarian_evaluators(data)
+
+    # Merge (established take precedence on name conflicts, then contrarian)
+    return {**original, **established, **contrarian}
