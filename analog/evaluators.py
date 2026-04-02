@@ -264,6 +264,58 @@ class HistoricalData:
         result.reverse()
         return result
 
+    def rolling_beta(self, asset: str, benchmark: str, ts: float, n_bars: int = 42
+                     ) -> float | None:
+        """Rolling beta of `asset` vs `benchmark` over n_bars.
+
+        beta = cov(asset, benchmark) / var(benchmark)
+        """
+        asset_candles = self.get_recent_candles(asset, ts, n_bars + 1)
+        bench_candles = self.get_recent_candles(benchmark, ts, n_bars + 1)
+        if len(asset_candles) < n_bars + 1 or len(bench_candles) < n_bars + 1:
+            return None
+
+        a_rets = []
+        b_rets = []
+        for i in range(1, min(len(asset_candles), len(bench_candles))):
+            if (asset_candles[i - 1].close > 0 and asset_candles[i].close > 0 and
+                    bench_candles[i - 1].close > 0 and bench_candles[i].close > 0):
+                a_rets.append(math.log(asset_candles[i].close / asset_candles[i - 1].close))
+                b_rets.append(math.log(bench_candles[i].close / bench_candles[i - 1].close))
+
+        if len(a_rets) < 10:
+            return None
+
+        mean_a = sum(a_rets) / len(a_rets)
+        mean_b = sum(b_rets) / len(b_rets)
+        cov = sum((a - mean_a) * (b - mean_b) for a, b in zip(a_rets, b_rets)) / len(a_rets)
+        var_b = sum((b - mean_b) ** 2 for b in b_rets) / len(b_rets)
+
+        if var_b <= 0:
+            return None
+        return cov / var_b
+
+    def residual_return(self, asset: str, benchmark: str, ts: float,
+                        forward_hours: float) -> float | None:
+        """Forward return of `asset` minus beta * forward return of `benchmark`.
+
+        This is the idiosyncratic return — the part NOT explained by BTC moves.
+        """
+        beta = self.rolling_beta(asset, benchmark, ts)
+        if beta is None:
+            return None
+
+        asset_ret = self.forward_return(asset, ts, forward_hours)
+        bench_ret = self.forward_return(benchmark, ts, forward_hours)
+        if asset_ret is None or bench_ret is None:
+            return None
+
+        return asset_ret - beta * bench_ret
+
+    def btc_signal(self, ts: float, lookback_hours: float) -> float | None:
+        """BTC momentum as a leading indicator for alts."""
+        return self.backward_return("BTC", ts, lookback_hours)
+
 
 # --- Strategy Evaluators ---
 
@@ -490,6 +542,7 @@ def build_evaluators(
     """
     from analog.strategies import build_all_evaluators
     from analog.contrarian import build_contrarian_evaluators
+    from analog.beta_strategies import build_beta_evaluators
 
     data = HistoricalData(candles, funding, primary_asset=asset)
 
@@ -508,8 +561,10 @@ def build_evaluators(
     # 9 contrarian strategies (flipped signals, consensus fade, etc.)
     contrarian = build_contrarian_evaluators(data)
 
-    # Merge (established take precedence on name conflicts, then contrarian)
-    return {**original, **established, **contrarian}
+    # 8 beta-adjusted strategies (residual, BTC-led, beta-relative)
+    beta = build_beta_evaluators(data)
+
+    return {**original, **established, **contrarian, **beta}
 
 
 def build_multi_asset_evaluators(
