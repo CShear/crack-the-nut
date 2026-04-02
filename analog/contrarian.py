@@ -34,7 +34,7 @@ def make_beta_rotation_flipped(data: HistoricalData) -> StrategyEvaluator:
     MOM_LOOKBACK = 168
 
     def evaluate(ts: float, fwd_hours: float) -> float | None:
-        btc_mom = data.backward_return("BTC", ts, MOM_LOOKBACK)
+        btc_mom = data.backward_return(data.primary, ts, MOM_LOOKBACK)
         if btc_mom is None or abs(btc_mom) < 0.01:
             return None
 
@@ -53,7 +53,7 @@ def make_beta_rotation_flipped(data: HistoricalData) -> StrategyEvaluator:
         direction = -1.0 if btc_mom > 0 else 1.0
         scale = min(abs(btc_mom) / 0.05, 2.0)
 
-        fwd_ret = data.forward_return("BTC", ts, fwd_hours)
+        fwd_ret = data.forward_return(data.primary, ts, fwd_hours)
         if fwd_ret is None:
             return None
         return direction * fwd_ret * scale - COMMISSION
@@ -71,8 +71,8 @@ def make_btc_eth_ratio_flipped(data: HistoricalData) -> StrategyEvaluator:
     ENTRY_Z = 2.0
 
     def evaluate(ts: float, fwd_hours: float) -> float | None:
-        btc_prices = data.closes("BTC", ts, WINDOW)
-        eth_prices = data.closes("ETH", ts, WINDOW)
+        btc_prices = data.closes(data.primary, ts, WINDOW)
+        eth_prices = data.closes(data.secondary, ts, WINDOW)
         if len(btc_prices) < WINDOW or len(eth_prices) < WINDOW:
             return None
 
@@ -93,8 +93,8 @@ def make_btc_eth_ratio_flipped(data: HistoricalData) -> StrategyEvaluator:
         # FLIPPED: z > 2 means ETH outperforming → it CONTINUES (short BTC)
         direction = -1.0 if z > 0 else 1.0
 
-        btc_ret = data.forward_return("BTC", ts, fwd_hours)
-        eth_ret = data.forward_return("ETH", ts, fwd_hours)
+        btc_ret = data.forward_return(data.primary, ts, fwd_hours)
+        eth_ret = data.forward_return(data.secondary, ts, fwd_hours)
         if btc_ret is None or eth_ret is None:
             return None
 
@@ -113,8 +113,8 @@ def make_ou_pairs_flipped(data: HistoricalData) -> StrategyEvaluator:
     ENTRY_Z = 2.0
 
     def evaluate(ts: float, fwd_hours: float) -> float | None:
-        btc_prices = data.closes("BTC", ts, WINDOW)
-        eth_prices = data.closes("ETH", ts, WINDOW)
+        btc_prices = data.closes(data.primary, ts, WINDOW)
+        eth_prices = data.closes(data.secondary, ts, WINDOW)
         if len(btc_prices) < WINDOW or len(eth_prices) < WINDOW:
             return None
 
@@ -135,7 +135,7 @@ def make_ou_pairs_flipped(data: HistoricalData) -> StrategyEvaluator:
         # FLIPPED: z > 2 (ETH overperforming) → it continues → short BTC
         direction = -1.0 if z >= ENTRY_Z else 1.0
 
-        fwd_ret = data.forward_return("BTC", ts, fwd_hours)
+        fwd_ret = data.forward_return(data.primary, ts, fwd_hours)
         if fwd_ret is None:
             return None
         return direction * fwd_ret - COMMISSION
@@ -156,12 +156,12 @@ def make_rsi_regime_flipped(data: HistoricalData) -> StrategyEvaluator:
     TREND_BARS = 120
 
     def evaluate(ts: float, fwd_hours: float) -> float | None:
-        rsi_val = data.rsi("BTC", ts, RSI_PERIOD)
+        rsi_val = data.rsi(data.primary, ts, RSI_PERIOD)
         if rsi_val is None:
             return None
 
-        sma_val = data.sma("BTC", ts, TREND_BARS)
-        candle = data.get_candle_at("BTC", ts)
+        sma_val = data.sma(data.primary, ts, TREND_BARS)
+        candle = data.get_candle_at(data.primary, ts)
         if sma_val is None or candle is None:
             return None
 
@@ -177,7 +177,7 @@ def make_rsi_regime_flipped(data: HistoricalData) -> StrategyEvaluator:
         else:
             return None
 
-        fwd_ret = data.forward_return("BTC", ts, fwd_hours)
+        fwd_ret = data.forward_return(data.primary, ts, fwd_hours)
         if fwd_ret is None:
             return None
         return direction * fwd_ret - COMMISSION
@@ -202,29 +202,29 @@ def make_consensus_fade(data: HistoricalData) -> StrategyEvaluator:
         votes: list[float] = []
 
         # TSMOM 7d
-        ret_7d = data.backward_return("BTC", ts, 168)
+        ret_7d = data.backward_return(data.primary, ts, 168)
         if ret_7d is not None:
             votes.append(1.0 if ret_7d > 0 else -1.0)
 
         # TSMOM 30d
-        ret_30d = data.backward_return("BTC", ts, 720)
+        ret_30d = data.backward_return(data.primary, ts, 720)
         if ret_30d is not None:
             votes.append(1.0 if ret_30d > 0 else -1.0)
 
         # EMA cross
-        fast = data.ema("BTC", ts, 12)
-        slow = data.ema("BTC", ts, 52)
+        fast = data.ema(data.primary, ts, 12)
+        slow = data.ema(data.primary, ts, 52)
         if fast is not None and slow is not None:
             votes.append(1.0 if fast > slow else -1.0)
 
         # RSI direction
-        rsi_val = data.rsi("BTC", ts, 14)
+        rsi_val = data.rsi(data.primary, ts, 14)
         if rsi_val is not None:
             votes.append(1.0 if rsi_val > 50 else -1.0)
 
         # Funding direction
         rates = data.get_funding_at(ts)
-        btc_rate = rates.get("BTC")
+        btc_rate = rates.get(data.primary)
         if btc_rate is not None:
             # Positive funding = longs crowded = bullish consensus
             votes.append(1.0 if btc_rate > 0 else -1.0)
@@ -240,7 +240,7 @@ def make_consensus_fade(data: HistoricalData) -> StrategyEvaluator:
         consensus_dir = 1.0 if sum(votes) > 0 else -1.0
         direction = -consensus_dir
 
-        fwd_ret = data.forward_return("BTC", ts, fwd_hours)
+        fwd_ret = data.forward_return(data.primary, ts, fwd_hours)
         if fwd_ret is None:
             return None
         return direction * fwd_ret - COMMISSION
@@ -266,8 +266,8 @@ def make_novel_state_trend(data: HistoricalData) -> StrategyEvaluator:
     MOM_THRESHOLD = 0.02       # need clear direction
 
     def evaluate(ts: float, fwd_hours: float) -> float | None:
-        vol_s = data.realized_vol("BTC", ts, 6)
-        vol_l = data.realized_vol("BTC", ts, 42)
+        vol_s = data.realized_vol(data.primary, ts, 6)
+        vol_l = data.realized_vol(data.primary, ts, 42)
         if vol_s is None or vol_l is None or vol_l <= 0:
             return None
 
@@ -276,13 +276,13 @@ def make_novel_state_trend(data: HistoricalData) -> StrategyEvaluator:
             return None  # not novel enough
 
         # In novel/extreme states, follow the short-term momentum
-        ret_1d = data.backward_return("BTC", ts, 24)
+        ret_1d = data.backward_return(data.primary, ts, 24)
         if ret_1d is None or abs(ret_1d) < MOM_THRESHOLD:
             return None
 
         direction = 1.0 if ret_1d > 0 else -1.0
 
-        fwd_ret = data.forward_return("BTC", ts, fwd_hours)
+        fwd_ret = data.forward_return(data.primary, ts, fwd_hours)
         if fwd_ret is None:
             return None
         return direction * fwd_ret - COMMISSION
@@ -303,9 +303,9 @@ def make_disagreement_breakout(data: HistoricalData) -> StrategyEvaluator:
     """
     def evaluate(ts: float, fwd_hours: float) -> float | None:
         # Trend signal
-        ret_7d = data.backward_return("BTC", ts, 168)
+        ret_7d = data.backward_return(data.primary, ts, 168)
         # Mean-reversion signal
-        rsi_val = data.rsi("BTC", ts, 14)
+        rsi_val = data.rsi(data.primary, ts, 14)
 
         if ret_7d is None or rsi_val is None:
             return None
@@ -324,8 +324,8 @@ def make_disagreement_breakout(data: HistoricalData) -> StrategyEvaluator:
             return None
 
         # Check vol is compressed (about to break)
-        vol_s = data.realized_vol("BTC", ts, 6)
-        vol_l = data.realized_vol("BTC", ts, 42)
+        vol_s = data.realized_vol(data.primary, ts, 6)
+        vol_l = data.realized_vol(data.primary, ts, 42)
         if vol_s is None or vol_l is None or vol_l <= 0:
             return None
 
@@ -333,13 +333,13 @@ def make_disagreement_breakout(data: HistoricalData) -> StrategyEvaluator:
             return None  # vol not compressed enough
 
         # Direction: use the very short-term momentum (4h) to pick breakout side
-        ret_4h = data.backward_return("BTC", ts, 4)
+        ret_4h = data.backward_return(data.primary, ts, 4)
         if ret_4h is None or abs(ret_4h) < 0.003:
             return None
 
         direction = 1.0 if ret_4h > 0 else -1.0
 
-        fwd_ret = data.forward_return("BTC", ts, fwd_hours)
+        fwd_ret = data.forward_return(data.primary, ts, fwd_hours)
         if fwd_ret is None:
             return None
         return direction * fwd_ret - COMMISSION
@@ -364,7 +364,7 @@ def make_funding_filtered_trend(data: HistoricalData) -> StrategyEvaluator:
 
     def evaluate(ts: float, fwd_hours: float) -> float | None:
         rates = data.get_funding_at(ts)
-        btc_rate = rates.get("BTC")
+        btc_rate = rates.get(data.primary)
         if btc_rate is None or abs(btc_rate) < FUNDING_THRESHOLD:
             return None
 
@@ -375,7 +375,7 @@ def make_funding_filtered_trend(data: HistoricalData) -> StrategyEvaluator:
         checks = 0
 
         # TSMOM agreement
-        ret = data.backward_return("BTC", ts, MOM_LOOKBACK)
+        ret = data.backward_return(data.primary, ts, MOM_LOOKBACK)
         if ret is not None:
             checks += 1
             mom_dir = 1.0 if ret > 0 else -1.0
@@ -383,8 +383,8 @@ def make_funding_filtered_trend(data: HistoricalData) -> StrategyEvaluator:
                 agreements += 1  # aligned or neutral
 
         # EMA cross agreement
-        fast = data.ema("BTC", ts, 12)
-        slow = data.ema("BTC", ts, 52)
+        fast = data.ema(data.primary, ts, 12)
+        slow = data.ema(data.primary, ts, 52)
         if fast is not None and slow is not None:
             checks += 1
             ema_dir = 1.0 if fast > slow else -1.0
@@ -392,7 +392,7 @@ def make_funding_filtered_trend(data: HistoricalData) -> StrategyEvaluator:
                 agreements += 1
 
         # RSI agreement (not overbought if going long, not oversold if going short)
-        rsi_val = data.rsi("BTC", ts, 14)
+        rsi_val = data.rsi(data.primary, ts, 14)
         if rsi_val is not None:
             checks += 1
             if carry_dir > 0 and rsi_val < 65:
@@ -403,7 +403,7 @@ def make_funding_filtered_trend(data: HistoricalData) -> StrategyEvaluator:
         if checks < 2 or agreements < 2:
             return None  # not enough filter agreement
 
-        fwd_ret = data.forward_return("BTC", ts, fwd_hours)
+        fwd_ret = data.forward_return(data.primary, ts, fwd_hours)
         if fwd_ret is None:
             return None
 
@@ -430,7 +430,7 @@ def make_multi_funding_filtered(data: HistoricalData) -> StrategyEvaluator:
         mean_rate = sum(values) / len(values)
 
         # Find most extreme funding
-        btc_rate = rates.get("BTC")
+        btc_rate = rates.get(data.primary)
         if btc_rate is None or abs(btc_rate) < THRESHOLD:
             return None
 
@@ -444,7 +444,7 @@ def make_multi_funding_filtered(data: HistoricalData) -> StrategyEvaluator:
         if carry_dir > 0 and mean_rate >= 0:
             return None  # we'd long but market isn't broadly overleveraged short
 
-        fwd_ret = data.forward_return("BTC", ts, fwd_hours)
+        fwd_ret = data.forward_return(data.primary, ts, fwd_hours)
         if fwd_ret is None:
             return None
 

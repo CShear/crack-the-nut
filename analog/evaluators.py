@@ -46,6 +46,7 @@ class HistoricalData:
         primary_asset: str = "BTC",
     ):
         self.primary = primary_asset
+        self.secondary = "ETH" if primary_asset != "ETH" else "BTC"
 
         # Build sorted timestamp → index maps for candles
         self._candle_ts: dict[str, list[float]] = {}
@@ -277,11 +278,11 @@ def _make_funding_arb(data: HistoricalData) -> StrategyEvaluator:
 
     def evaluate(analog_ts: float, forward_hours: float) -> float | None:
         rates = data.get_funding_at(analog_ts)
-        btc_rate = rates.get("BTC")
+        btc_rate = rates.get(data.primary)
         if btc_rate is None or abs(btc_rate) < THRESHOLD:
             return None  # wouldn't trade
 
-        fwd_ret = data.forward_return("BTC", analog_ts, forward_hours)
+        fwd_ret = data.forward_return(data.primary, analog_ts, forward_hours)
         if fwd_ret is None:
             return None
 
@@ -327,7 +328,7 @@ def _make_multi_asset_funding(data: HistoricalData) -> StrategyEvaluator:
         fwd_ret = data.forward_return(best_asset, analog_ts, forward_hours)
         if fwd_ret is None:
             # Fall back to BTC if the specific asset doesn't have candle data
-            fwd_ret = data.forward_return("BTC", analog_ts, forward_hours)
+            fwd_ret = data.forward_return(data.primary, analog_ts, forward_hours)
             if fwd_ret is None:
                 return None
 
@@ -349,9 +350,9 @@ def _make_trend_follow(data: HistoricalData) -> StrategyEvaluator:
 
     def evaluate(analog_ts: float, forward_hours: float) -> float | None:
         # 1d momentum (6 bars at 4h)
-        ret_1d = data.forward_return("BTC", analog_ts - 6 * 4 * 3600, 24)
+        ret_1d = data.forward_return(data.primary, analog_ts - 6 * 4 * 3600, 24)
         # 7d momentum (42 bars at 4h)
-        ret_7d = data.forward_return("BTC", analog_ts - 42 * 4 * 3600, 168)
+        ret_7d = data.forward_return(data.primary, analog_ts - 42 * 4 * 3600, 168)
 
         if ret_1d is None or ret_7d is None:
             return None
@@ -363,7 +364,7 @@ def _make_trend_follow(data: HistoricalData) -> StrategyEvaluator:
             return None  # conflicting signals
 
         direction = 1.0 if ret_1d > 0 else -1.0
-        fwd_ret = data.forward_return("BTC", analog_ts, forward_hours)
+        fwd_ret = data.forward_return(data.primary, analog_ts, forward_hours)
         if fwd_ret is None:
             return None
 
@@ -382,17 +383,17 @@ def _make_mean_reversion(data: HistoricalData) -> StrategyEvaluator:
     COMMISSION = 0.0006
 
     def evaluate(analog_ts: float, forward_hours: float) -> float | None:
-        ret_1d = data.forward_return("BTC", analog_ts - 6 * 4 * 3600, 24)
+        ret_1d = data.forward_return(data.primary, analog_ts - 6 * 4 * 3600, 24)
         if ret_1d is None or abs(ret_1d) < MOVE_THRESHOLD:
             return None
 
         # Check volatility is elevated
-        vol = data.realized_vol("BTC", analog_ts, 42)  # 7d vol
+        vol = data.realized_vol(data.primary, analog_ts, 42)  # 7d vol
         if vol is None:
             return None
 
         # Simple percentile check: we need vol to be relatively high
-        vol_long = data.realized_vol("BTC", analog_ts, 180)  # 30d vol
+        vol_long = data.realized_vol(data.primary, analog_ts, 180)  # 30d vol
         if vol_long is None or vol_long <= 0:
             return None
 
@@ -402,7 +403,7 @@ def _make_mean_reversion(data: HistoricalData) -> StrategyEvaluator:
 
         # Fade the move
         direction = -1.0 if ret_1d > 0 else 1.0
-        fwd_ret = data.forward_return("BTC", analog_ts, forward_hours)
+        fwd_ret = data.forward_return(data.primary, analog_ts, forward_hours)
         if fwd_ret is None:
             return None
 
@@ -422,8 +423,8 @@ def _make_breakout(data: HistoricalData) -> StrategyEvaluator:
     COMMISSION = 0.0006
 
     def evaluate(analog_ts: float, forward_hours: float) -> float | None:
-        candles_short = data.get_recent_candles("BTC", analog_ts, 7)  # ~1d
-        candles_long = data.get_recent_candles("BTC", analog_ts, 43)  # ~7d
+        candles_short = data.get_recent_candles(data.primary, analog_ts, 7)  # ~1d
+        candles_long = data.get_recent_candles(data.primary, analog_ts, 43)  # ~7d
 
         if len(candles_short) < 7 or len(candles_long) < 43:
             return None
@@ -458,12 +459,12 @@ def _make_breakout(data: HistoricalData) -> StrategyEvaluator:
             return None  # not compressed enough
 
         # Check for breakout in the current bar
-        ret_4h = data.forward_return("BTC", analog_ts - 4 * 3600, 4)
+        ret_4h = data.forward_return(data.primary, analog_ts - 4 * 3600, 4)
         if ret_4h is None or abs(ret_4h) < BREAKOUT_THRESHOLD:
             return None
 
         direction = 1.0 if ret_4h > 0 else -1.0
-        fwd_ret = data.forward_return("BTC", analog_ts, forward_hours)
+        fwd_ret = data.forward_return(data.primary, analog_ts, forward_hours)
         if fwd_ret is None:
             return None
 
@@ -475,16 +476,22 @@ def _make_breakout(data: HistoricalData) -> StrategyEvaluator:
 def build_evaluators(
     candles: dict[str, list[CandleData]],
     funding: dict[str, list[FundingSnapshot]],
+    asset: str = "BTC",
 ) -> dict[str, StrategyEvaluator]:
     """Build all strategy evaluators from backfilled data.
 
+    Args:
+        candles: OHLCV data per asset.
+        funding: Funding snapshots per asset.
+        asset: Which asset to trade. Strategies use this as the primary asset.
+
     Returns a dict of name → evaluator suitable for AnalogScorer.register_strategy().
-    Includes the original 5 + all 25 established strategies from strategies.py.
+    Includes the original 5 + all 25 established + 9 contrarian strategies.
     """
     from analog.strategies import build_all_evaluators
     from analog.contrarian import build_contrarian_evaluators
 
-    data = HistoricalData(candles, funding)
+    data = HistoricalData(candles, funding, primary_asset=asset)
 
     # Original 5 (kept for backwards compatibility)
     original = {
@@ -503,3 +510,26 @@ def build_evaluators(
 
     # Merge (established take precedence on name conflicts, then contrarian)
     return {**original, **established, **contrarian}
+
+
+def build_multi_asset_evaluators(
+    candles: dict[str, list[CandleData]],
+    funding: dict[str, list[FundingSnapshot]],
+    assets: list[str] | None = None,
+) -> dict[str, StrategyEvaluator]:
+    """Build evaluators for ALL assets, with asset prefix in names.
+
+    Returns e.g. {"BTC:mean_reversion": ..., "ETH:mean_reversion": ..., "SOL:funding_arb": ...}
+    """
+    if assets is None:
+        assets = sorted(candles.keys())
+
+    all_evals: dict[str, StrategyEvaluator] = {}
+    for asset in assets:
+        if asset not in candles or len(candles[asset]) < 200:
+            continue  # skip assets without enough data
+        asset_evals = build_evaluators(candles, funding, asset=asset)
+        for name, evaluator in asset_evals.items():
+            all_evals[f"{asset}:{name}"] = evaluator
+
+    return all_evals

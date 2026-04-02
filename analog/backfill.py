@@ -32,7 +32,7 @@ logger = structlog.get_logger()
 # --- Constants ---
 HYPERLIQUID_BASE = "https://api.hyperliquid.xyz"
 
-CANDLE_ASSETS = ["BTC", "ETH"]
+CANDLE_ASSETS = ["BTC", "ETH", "SOL", "DOGE", "ARB", "OP", "AVAX", "LINK", "WIF"]
 FUNDING_ASSETS = ["BTC", "ETH", "SOL", "DOGE", "ARB", "OP", "AVAX", "LINK", "WIF", "PEPE"]
 INTERVAL = "4h"
 LOOKBACK_DAYS = 730  # ~2 years
