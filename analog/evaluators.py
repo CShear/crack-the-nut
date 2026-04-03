@@ -37,6 +37,12 @@ class HistoricalData:
     """Indexed historical data for fast lookups by timestamp.
 
     Builds sorted arrays and uses binary search for O(log n) lookups.
+
+    The ``interval_hours`` parameter controls bar sizing. All bar-count
+    parameters in strategy evaluators were calibrated for 4h bars.  Use
+    ``b(n)`` to scale a 4h bar count to the current interval::
+
+        data.realized_vol(asset, ts, data.b(42))  # always = 7 days
     """
 
     def __init__(
@@ -44,9 +50,14 @@ class HistoricalData:
         candles: dict[str, list[CandleData]],
         funding: dict[str, list[FundingSnapshot]],
         primary_asset: str = "BTC",
+        interval_hours: float = 4.0,
     ):
         self.primary = primary_asset
         self.secondary = "ETH" if primary_asset != "ETH" else "BTC"
+        self.interval_hours = interval_hours
+        # Scale factor: how many current-interval bars fit in one 4h bar
+        self.bar_scale = 4.0 / interval_hours  # 1 for 4h, 16 for 15m
+        self._bar_ms = int(interval_hours * 3600 * 1000)
 
         # Build sorted timestamp → index maps for candles
         self._candle_ts: dict[str, list[float]] = {}
@@ -56,11 +67,11 @@ class HistoricalData:
             self._candle_ts[asset] = [c.timestamp_ms / 1000.0 for c in sorted_c]
             self._candle_data[asset] = sorted_c
 
-        # Build sorted funding data per asset, aligned to 4h bars
+        # Build sorted funding data per asset, aligned to bars
         self._funding_by_bar: dict[int, dict[str, float]] = {}
         for asset, flist in funding.items():
             for f in flist:
-                bar_ms = (f.timestamp_ms // (4 * 3600 * 1000)) * (4 * 3600 * 1000)
+                bar_ms = (f.timestamp_ms // self._bar_ms) * self._bar_ms
                 if bar_ms not in self._funding_by_bar:
                     self._funding_by_bar[bar_ms] = {}
                 # Average if multiple funding snapshots per bar
@@ -71,8 +82,15 @@ class HistoricalData:
                 else:
                     self._funding_by_bar[bar_ms][asset] = f.rate
 
+    def b(self, n_4h_bars: int) -> int:
+        """Scale a 4h-calibrated bar count to the current interval.
+
+        ``data.b(42)`` returns 42 at 4h, 672 at 15m — always 7 days.
+        """
+        return max(1, int(n_4h_bars * self.bar_scale))
+
     def get_candle_at(self, asset: str, ts: float) -> CandleData | None:
-        """Find the candle closest to timestamp ts (within 4h)."""
+        """Find the candle closest to timestamp ts (within one bar interval)."""
         timestamps = self._candle_ts.get(asset)
         if not timestamps:
             return None
@@ -85,7 +103,8 @@ class HistoricalData:
             if diff < best_diff:
                 best_diff = diff
                 best_idx = candidate
-        if best_idx is not None and best_diff < 4 * 3600:  # within 4h
+        tolerance = self.interval_hours * 3600  # within one bar
+        if best_idx is not None and best_diff < tolerance:
             return self._candle_data[asset][best_idx]
         return None
 
@@ -99,7 +118,7 @@ class HistoricalData:
             idx = len(timestamps) - 1
         if idx > 0 and abs(timestamps[idx - 1] - ts) < abs(timestamps[idx] - ts):
             idx = idx - 1
-        if abs(timestamps[idx] - ts) < 4 * 3600:
+        if abs(timestamps[idx] - ts) < self.interval_hours * 3600:
             return idx
         return None
 
@@ -108,7 +127,7 @@ class HistoricalData:
         idx = self.get_candle_index(asset, ts)
         if idx is None:
             return None
-        forward_bars = max(1, int(forward_hours / 4))
+        forward_bars = max(1, int(forward_hours / self.interval_hours))
         candles = self._candle_data[asset]
         if idx + forward_bars >= len(candles):
             return None
@@ -119,8 +138,8 @@ class HistoricalData:
         return (exit_ - entry) / entry
 
     def get_funding_at(self, ts: float) -> dict[str, float]:
-        """Get funding rates for all assets at the 4h bar containing ts."""
-        bar_ms = int((ts * 1000) // (4 * 3600 * 1000)) * (4 * 3600 * 1000)
+        """Get funding rates for all assets at the bar containing ts."""
+        bar_ms = int((ts * 1000) // self._bar_ms) * self._bar_ms
         return self._funding_by_bar.get(bar_ms, {})
 
     def get_recent_candles(self, asset: str, ts: float, n_bars: int) -> list[CandleData]:
@@ -241,11 +260,11 @@ class HistoricalData:
         return (ema_val - mult * atr_val, ema_val, ema_val + mult * atr_val)
 
     def funding_window(self, ts: float, n_bars: int) -> list[dict[str, float]]:
-        """Get funding rate snapshots for the last n_bars (4h each)."""
+        """Get funding rate snapshots for the last n_bars."""
         result = []
-        bar_ms_now = int((ts * 1000) // (4 * 3600 * 1000)) * (4 * 3600 * 1000)
+        bar_ms_now = int((ts * 1000) // self._bar_ms) * self._bar_ms
         for i in range(n_bars):
-            bar_ms = bar_ms_now - i * (4 * 3600 * 1000)
+            bar_ms = bar_ms_now - i * self._bar_ms
             rates = self._funding_by_bar.get(bar_ms, {})
             if rates:
                 result.append(rates)
@@ -253,11 +272,11 @@ class HistoricalData:
         return result
 
     def funding_asset_history(self, asset: str, ts: float, n_bars: int) -> list[float]:
-        """Get funding rate history for one asset over n_bars (4h each)."""
+        """Get funding rate history for one asset over n_bars."""
         result = []
-        bar_ms_now = int((ts * 1000) // (4 * 3600 * 1000)) * (4 * 3600 * 1000)
+        bar_ms_now = int((ts * 1000) // self._bar_ms) * self._bar_ms
         for i in range(n_bars):
-            bar_ms = bar_ms_now - i * (4 * 3600 * 1000)
+            bar_ms = bar_ms_now - i * self._bar_ms
             rates = self._funding_by_bar.get(bar_ms, {})
             if asset in rates:
                 result.append(rates[asset])
@@ -440,12 +459,12 @@ def _make_mean_reversion(data: HistoricalData) -> StrategyEvaluator:
             return None
 
         # Check volatility is elevated
-        vol = data.realized_vol(data.primary, analog_ts, 42)  # 7d vol
+        vol = data.realized_vol(data.primary, analog_ts, data.b(42))  # 7d vol
         if vol is None:
             return None
 
         # Simple percentile check: we need vol to be relatively high
-        vol_long = data.realized_vol(data.primary, analog_ts, 180)  # 30d vol
+        vol_long = data.realized_vol(data.primary, analog_ts, data.b(180))  # 30d vol
         if vol_long is None or vol_long <= 0:
             return None
 
@@ -475,10 +494,12 @@ def _make_breakout(data: HistoricalData) -> StrategyEvaluator:
     COMMISSION = 0.0006
 
     def evaluate(analog_ts: float, forward_hours: float) -> float | None:
-        candles_short = data.get_recent_candles(data.primary, analog_ts, 7)  # ~1d
-        candles_long = data.get_recent_candles(data.primary, analog_ts, 43)  # ~7d
+        n_short = data.b(7)   # ~1d
+        n_long = data.b(43)   # ~7d
+        candles_short = data.get_recent_candles(data.primary, analog_ts, n_short)
+        candles_long = data.get_recent_candles(data.primary, analog_ts, n_long)
 
-        if len(candles_short) < 7 or len(candles_long) < 43:
+        if len(candles_short) < n_short or len(candles_long) < n_long:
             return None
 
         # ATR short
@@ -511,7 +532,7 @@ def _make_breakout(data: HistoricalData) -> StrategyEvaluator:
             return None  # not compressed enough
 
         # Check for breakout in the current bar
-        ret_4h = data.forward_return(data.primary, analog_ts - 4 * 3600, 4)
+        ret_4h = data.forward_return(data.primary, analog_ts - data.interval_hours * 3600, data.interval_hours)
         if ret_4h is None or abs(ret_4h) < BREAKOUT_THRESHOLD:
             return None
 
@@ -529,6 +550,7 @@ def build_evaluators(
     candles: dict[str, list[CandleData]],
     funding: dict[str, list[FundingSnapshot]],
     asset: str = "BTC",
+    interval_hours: float = 4.0,
 ) -> dict[str, StrategyEvaluator]:
     """Build all strategy evaluators from backfilled data.
 
@@ -536,6 +558,7 @@ def build_evaluators(
         candles: OHLCV data per asset.
         funding: Funding snapshots per asset.
         asset: Which asset to trade. Strategies use this as the primary asset.
+        interval_hours: Bar interval in hours (4.0 for 4h, 0.25 for 15m).
 
     Returns a dict of name → evaluator suitable for AnalogScorer.register_strategy().
     Includes the original 5 + all 25 established + 9 contrarian strategies.
@@ -545,7 +568,8 @@ def build_evaluators(
     from analog.beta_strategies import build_beta_evaluators
     from analog.lead_lag import build_lead_lag_evaluators
 
-    data = HistoricalData(candles, funding, primary_asset=asset)
+    data = HistoricalData(candles, funding, primary_asset=asset,
+                          interval_hours=interval_hours)
 
     # Original 5 (kept for backwards compatibility)
     original = {
@@ -575,6 +599,7 @@ def build_multi_asset_evaluators(
     candles: dict[str, list[CandleData]],
     funding: dict[str, list[FundingSnapshot]],
     assets: list[str] | None = None,
+    interval_hours: float = 4.0,
 ) -> dict[str, StrategyEvaluator]:
     """Build evaluators for ALL assets, with asset prefix in names.
 
@@ -587,7 +612,8 @@ def build_multi_asset_evaluators(
     for asset in assets:
         if asset not in candles or len(candles[asset]) < 200:
             continue  # skip assets without enough data
-        asset_evals = build_evaluators(candles, funding, asset=asset)
+        asset_evals = build_evaluators(candles, funding, asset=asset,
+                                       interval_hours=interval_hours)
         for name, evaluator in asset_evals.items():
             all_evals[f"{asset}:{name}"] = evaluator
 

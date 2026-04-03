@@ -54,15 +54,19 @@ class Fingerprint:
         return out
 
 
+def _make_deque(maxlen: int = 500) -> deque:
+    return deque(maxlen=maxlen)
+
+
 @dataclass
 class _AssetHistory:
     """Rolling price history for one asset."""
 
-    closes: deque[float] = field(default_factory=lambda: deque(maxlen=500))
-    highs: deque[float] = field(default_factory=lambda: deque(maxlen=500))
-    lows: deque[float] = field(default_factory=lambda: deque(maxlen=500))
-    volumes: deque[float] = field(default_factory=lambda: deque(maxlen=500))
-    timestamps: deque[float] = field(default_factory=lambda: deque(maxlen=500))
+    closes: deque[float] = field(default_factory=lambda: deque(maxlen=8000))
+    highs: deque[float] = field(default_factory=lambda: deque(maxlen=8000))
+    lows: deque[float] = field(default_factory=lambda: deque(maxlen=8000))
+    volumes: deque[float] = field(default_factory=lambda: deque(maxlen=8000))
+    timestamps: deque[float] = field(default_factory=lambda: deque(maxlen=8000))
 
 
 def _returns(prices: list[float], period: int) -> float | None:
@@ -122,19 +126,19 @@ class FingerprintEngine:
         interval_hours: Bar interval in hours (default 4).
     """
 
-    # Return horizons in bars (for a 4h bar: 1=4h, 6=1d, 42=7d, 180=30d)
-    RETURN_HORIZONS = {
-        "4h": 1,
-        "1d": 6,
-        "7d": 42,
-        "30d": 180,
+    # Return horizons in HOURS — converted to bars dynamically
+    RETURN_HORIZON_HOURS = {
+        "4h": 4,
+        "1d": 24,
+        "7d": 168,
+        "30d": 720,
     }
 
-    # Volatility windows in bars
-    VOL_WINDOWS = {
-        "1d": 6,
-        "7d": 42,
-        "30d": 180,
+    # Volatility windows in HOURS
+    VOL_WINDOW_HOURS = {
+        "1d": 24,
+        "7d": 168,
+        "30d": 720,
     }
 
     def __init__(
@@ -146,10 +150,22 @@ class FingerprintEngine:
         self.primary_asset = primary_asset
         self.secondary_asset = secondary_asset
         self.interval_hours = interval_hours
+        self._bars_per_hour = 1.0 / interval_hours
+        # Compute bar counts from hour-based definitions
+        self.RETURN_HORIZONS = {
+            name: max(1, int(hours / interval_hours))
+            for name, hours in self.RETURN_HORIZON_HOURS.items()
+        }
+        self.VOL_WINDOWS = {
+            name: max(1, int(hours / interval_hours))
+            for name, hours in self.VOL_WINDOW_HOURS.items()
+        }
         self._assets: dict[str, _AssetHistory] = {}
         self._funding_features: dict[str, float] = {}
         # Rolling vol history for percentile ranking
-        self._vol_history: deque[float] = deque(maxlen=500)
+        # Scale maxlen for higher-frequency data
+        maxlen = max(500, int(500 * (4.0 / interval_hours)))
+        self._vol_history: deque[float] = deque(maxlen=maxlen)
 
     def update_candles(
         self,
@@ -206,8 +222,10 @@ class FingerprintEngine:
                 vector[f"{asset_key}_return_{horizon_name}"] = round(ret, 6) if ret is not None else 0.0
 
         # --- Volatility structure (primary asset) ---
+        bars_1d = self.VOL_WINDOWS["1d"]
+        bars_7d = self.VOL_WINDOWS["7d"]
         btc_hist = self._assets.get(self.primary_asset)
-        if btc_hist and len(btc_hist.closes) > 6:
+        if btc_hist and len(btc_hist.closes) > bars_1d:
             closes = list(btc_hist.closes)
             for vol_name, bars in self.VOL_WINDOWS.items():
                 vol = _realized_vol(closes, bars)
@@ -222,8 +240,8 @@ class FingerprintEngine:
                     vector[f"realized_vol_{vol_name}_pct"] = 0.5
 
             # Vol term structure: ratio of short to long vol
-            vol_1d = _realized_vol(closes, 6)
-            vol_7d = _realized_vol(closes, 42)
+            vol_1d = _realized_vol(closes, bars_1d)
+            vol_7d = _realized_vol(closes, bars_7d)
             if vol_1d is not None and vol_7d is not None and vol_7d > 0:
                 vector["vol_term_structure"] = round(vol_1d / vol_7d, 4)
             else:
@@ -233,8 +251,8 @@ class FingerprintEngine:
             if btc_hist.highs and btc_hist.lows:
                 highs = list(btc_hist.highs)
                 lows = list(btc_hist.lows)
-                atr_short = _atr(highs, lows, closes, 6)
-                atr_long = _atr(highs, lows, closes, 42)
+                atr_short = _atr(highs, lows, closes, bars_1d)
+                atr_long = _atr(highs, lows, closes, bars_7d)
                 if atr_short is not None and atr_long is not None and atr_long > 0:
                     vector["range_compression"] = round(atr_short / atr_long, 4)
                 else:
@@ -249,18 +267,18 @@ class FingerprintEngine:
         # --- Cross-asset relative strength ---
         btc_closes = list(self._assets[self.primary_asset].closes) if self.primary_asset in self._assets else []
         eth_closes = list(self._assets[self.secondary_asset].closes) if self.secondary_asset in self._assets else []
-        if len(btc_closes) > 42 and len(eth_closes) > 42 and btc_closes[-1] > 0:
+        if len(btc_closes) > bars_7d and len(eth_closes) > bars_7d and btc_closes[-1] > 0:
             ratio_now = eth_closes[-1] / btc_closes[-1]
-            ratio_7d = eth_closes[-42] / btc_closes[-42] if btc_closes[-42] > 0 else ratio_now
+            ratio_7d = eth_closes[-bars_7d] / btc_closes[-bars_7d] if btc_closes[-bars_7d] > 0 else ratio_now
             vector["eth_btc_ratio_change_7d"] = round(ratio_now - ratio_7d, 6) if ratio_7d > 0 else 0.0
         else:
             vector["eth_btc_ratio_change_7d"] = 0.0
 
         # --- Volume features (primary asset) ---
-        if btc_hist and len(btc_hist.volumes) > 42:
+        if btc_hist and len(btc_hist.volumes) > bars_7d:
             vols = list(btc_hist.volumes)
-            recent_avg = sum(vols[-6:]) / 6  # 1d avg
-            longer_avg = sum(vols[-42:]) / 42  # 7d avg
+            recent_avg = sum(vols[-bars_1d:]) / bars_1d  # 1d avg
+            longer_avg = sum(vols[-bars_7d:]) / bars_7d  # 7d avg
             if longer_avg > 0:
                 vector["volume_ratio_1d_7d"] = round(recent_avg / longer_avg, 4)
             else:

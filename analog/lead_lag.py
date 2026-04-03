@@ -19,7 +19,7 @@ from typing import Callable
 
 import structlog
 
-from analog.backfill import run_backfill, print_summary, CandleData
+from analog.backfill import run_backfill, print_summary, CandleData, INTERVAL_HOURS
 from analog.evaluators import HistoricalData
 from analog.strategies import COMMISSION
 
@@ -38,8 +38,8 @@ class LeadLagResult:
 
     leader: str
     follower: str
-    best_lag_bars: int  # how many 4h bars the follower lags
-    best_lag_hours: int
+    best_lag_bars: int  # how many bars the follower lags
+    best_lag_hours: float
     correlation_at_lag: float  # correlation at the optimal lag
     correlation_at_zero: float  # contemporaneous correlation
     improvement: float  # how much better lagged corr is vs zero-lag
@@ -50,7 +50,8 @@ def measure_lead_lag(
     candles: dict[str, list[CandleData]],
     leader: str,
     follower: str,
-    max_lag_bars: int = 12,  # up to 48 hours at 4h bars
+    max_lag_bars: int = 48,  # up to 12 hours at 15m bars
+    interval_hours: float = 4.0,
 ) -> LeadLagResult | None:
     """Measure the lead-lag relationship between two assets.
 
@@ -78,7 +79,7 @@ def measure_lead_lag(
             follower_by_ts[ts] = math.log(follower_candles[i].close / follower_candles[i - 1].close)
 
     # Get common timestamps
-    bar_interval_ms = 4 * 3600 * 1000
+    bar_interval_ms = int(interval_hours * 3600 * 1000)
     common_ts = sorted(set(leader_by_ts.keys()) & set(follower_by_ts.keys()))
 
     if len(common_ts) < 100:
@@ -125,7 +126,7 @@ def measure_lead_lag(
         leader=leader,
         follower=follower,
         best_lag_bars=best_lag,
-        best_lag_hours=best_lag * 4,
+        best_lag_hours=best_lag * interval_hours,
         correlation_at_lag=round(best_corr, 4),
         correlation_at_zero=round(corr_at_zero, 4),
         improvement=round(best_corr - corr_at_zero, 4),
@@ -137,7 +138,7 @@ def measure_lead_lag(
 # LEAD-LAG STRATEGIES
 # ─────────────────────────────────────────────────────────────────────
 
-def make_btc_leads_lagged(data: HistoricalData, lag_hours: int = 4) -> StrategyEvaluator:
+def make_btc_leads_lagged(data: HistoricalData, lag_hours: float = 4) -> StrategyEvaluator:
     """Trade the alt based on BTC's move `lag_hours` ago.
 
     If BTC moved 2% four hours ago and the alt hasn't caught up yet,
@@ -160,7 +161,7 @@ def make_btc_leads_lagged(data: HistoricalData, lag_hours: int = 4) -> StrategyE
         if alt_ret is None:
             return None
 
-        beta = data.rolling_beta(asset, "BTC", ts, 42)
+        beta = data.rolling_beta(asset, "BTC", ts, data.b(42))
         if beta is None or beta <= 0:
             return None
 
@@ -181,7 +182,7 @@ def make_btc_leads_lagged(data: HistoricalData, lag_hours: int = 4) -> StrategyE
     return evaluate
 
 
-def make_eth_leads_lagged(data: HistoricalData, lag_hours: int = 4) -> StrategyEvaluator:
+def make_eth_leads_lagged(data: HistoricalData, lag_hours: float = 4) -> StrategyEvaluator:
     """Same as BTC-leads but using ETH as the leader.
 
     ETH sometimes leads alts on DeFi-specific narratives.
@@ -201,7 +202,7 @@ def make_eth_leads_lagged(data: HistoricalData, lag_hours: int = 4) -> StrategyE
         if alt_ret is None:
             return None
 
-        beta = data.rolling_beta(asset, "ETH", ts, 42)
+        beta = data.rolling_beta(asset, "ETH", ts, data.b(42))
         if beta is None or beta <= 0:
             return None
 
@@ -227,7 +228,7 @@ def make_multi_lag_ensemble(data: HistoricalData) -> StrategyEvaluator:
     Checks BTC moves at 4h, 8h, and 12h lags. If multiple lags agree
     on direction and the alt hasn't caught up, trade with higher conviction.
     """
-    LAGS = [4, 8, 12]  # hours
+    LAGS = [0.25, 0.5, 1, 2, 4, 8, 12]  # hours
     BTC_THRESHOLD = 0.006
 
     def evaluate(ts: float, fwd_hours: float) -> float | None:
@@ -235,7 +236,7 @@ def make_multi_lag_ensemble(data: HistoricalData) -> StrategyEvaluator:
         if asset == "BTC":
             return None
 
-        beta = data.rolling_beta(asset, "BTC", ts, 42)
+        beta = data.rolling_beta(asset, "BTC", ts, data.b(42))
         if beta is None or beta <= 0:
             return None
 
@@ -279,6 +280,7 @@ def make_btc_impulse_alt_catch_up(data: HistoricalData) -> StrategyEvaluator:
     """
     BTC_IMPULSE = 0.015  # 1.5% in 4h is a sharp move
     BETA_MIN = 1.3
+    bar_secs = data.interval_hours * 3600
 
     def evaluate(ts: float, fwd_hours: float) -> float | None:
         asset = data.primary
@@ -286,16 +288,16 @@ def make_btc_impulse_alt_catch_up(data: HistoricalData) -> StrategyEvaluator:
             return None
 
         # Was there a BTC impulse 1 bar ago?
-        btc_prev = data.backward_return("BTC", ts - 4 * 3600, 4)
+        btc_prev = data.backward_return("BTC", ts - bar_secs, data.interval_hours)
         if btc_prev is None or abs(btc_prev) < BTC_IMPULSE:
             return None
 
         # Is the alt lagging? (didn't move as much as beta predicts)
-        beta = data.rolling_beta(asset, "BTC", ts, 42)
+        beta = data.rolling_beta(asset, "BTC", ts, data.b(42))
         if beta is None or abs(beta) < BETA_MIN:
             return None
 
-        alt_prev = data.backward_return(asset, ts - 4 * 3600, 4)
+        alt_prev = data.backward_return(asset, ts - bar_secs, data.interval_hours)
         if alt_prev is None:
             return None
 
@@ -368,9 +370,17 @@ def make_btc_reversal_alt_still_moving(data: HistoricalData) -> StrategyEvaluato
 # ─────────────────────────────────────────────────────────────────────
 
 LEAD_LAG_STRATEGIES: dict[str, Callable[[HistoricalData], StrategyEvaluator]] = {
+    "btc_leads_15m": lambda data: make_btc_leads_lagged(data, lag_hours=0.25),
+    "btc_leads_30m": lambda data: make_btc_leads_lagged(data, lag_hours=0.5),
+    "btc_leads_1h": lambda data: make_btc_leads_lagged(data, lag_hours=1),
+    "btc_leads_2h": lambda data: make_btc_leads_lagged(data, lag_hours=2),
     "btc_leads_4h": lambda data: make_btc_leads_lagged(data, lag_hours=4),
     "btc_leads_8h": lambda data: make_btc_leads_lagged(data, lag_hours=8),
     "btc_leads_12h": lambda data: make_btc_leads_lagged(data, lag_hours=12),
+    "eth_leads_15m": lambda data: make_eth_leads_lagged(data, lag_hours=0.25),
+    "eth_leads_30m": lambda data: make_eth_leads_lagged(data, lag_hours=0.5),
+    "eth_leads_1h": lambda data: make_eth_leads_lagged(data, lag_hours=1),
+    "eth_leads_2h": lambda data: make_eth_leads_lagged(data, lag_hours=2),
     "eth_leads_4h": lambda data: make_eth_leads_lagged(data, lag_hours=4),
     "eth_leads_8h": lambda data: make_eth_leads_lagged(data, lag_hours=8),
     "multi_lag_ensemble": make_multi_lag_ensemble,
@@ -388,12 +398,13 @@ def build_lead_lag_evaluators(data: HistoricalData) -> dict[str, StrategyEvaluat
 # Analysis CLI
 # ─────────────────────────────────────────────────────────────────────
 
-async def main(lookback_days: int = 730):
+async def main(lookback_days: int = 730, interval: str = "4h"):
+    interval_hours = INTERVAL_HOURS.get(interval, 4.0)
     print("=" * 70)
-    print("  LEAD-LAG ANALYSIS")
+    print(f"  LEAD-LAG ANALYSIS  (interval={interval})")
     print("=" * 70)
 
-    result = await run_backfill(lookback_days=lookback_days)
+    result = await run_backfill(lookback_days=lookback_days, interval=interval)
     print_summary(result)
 
     alts = [a for a in sorted(result.candles.keys()) if a not in ("BTC", "ETH")]
@@ -405,7 +416,7 @@ async def main(lookback_days: int = 730):
 
     for leader in leaders:
         for follower in alts:
-            ll = measure_lead_lag(result.candles, leader, follower)
+            ll = measure_lead_lag(result.candles, leader, follower, interval_hours=interval_hours)
             if ll is None:
                 continue
             lag_str = f"{ll.best_lag_hours}h" if ll.best_lag_bars > 0 else "0h"
@@ -424,7 +435,7 @@ async def main(lookback_days: int = 730):
         if len(result.candles.get(alt, [])) < 200:
             continue
 
-        data = HD(result.candles, result.funding, primary_asset=alt)
+        data = HD(result.candles, result.funding, primary_asset=alt, interval_hours=interval_hours)
         ll_evals = build_lead_lag_evaluators(data)
 
         candles = sorted(result.candles[alt], key=lambda c: c.timestamp_ms)
@@ -454,5 +465,7 @@ async def main(lookback_days: int = 730):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Lead-Lag Analysis")
     parser.add_argument("--days", type=int, default=730)
+    parser.add_argument("--interval", type=str, default="4h",
+                        choices=list(INTERVAL_HOURS.keys()))
     args = parser.parse_args()
-    asyncio.run(main(lookback_days=args.days))
+    asyncio.run(main(lookback_days=args.days, interval=args.interval))

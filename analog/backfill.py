@@ -32,9 +32,14 @@ logger = structlog.get_logger()
 # --- Constants ---
 HYPERLIQUID_BASE = "https://api.hyperliquid.xyz"
 
-CANDLE_ASSETS = ["BTC", "ETH", "SOL", "DOGE", "ARB", "OP", "AVAX", "LINK", "WIF"]
-FUNDING_ASSETS = ["BTC", "ETH", "SOL", "DOGE", "ARB", "OP", "AVAX", "LINK", "WIF", "PEPE"]
+CANDLE_ASSETS = ["BTC", "ETH", "SOL", "DOGE", "ARB", "OP", "AVAX", "LINK", "WIF", "TAO", "HYPE", "SPX", "FARTCOIN"]
+FUNDING_ASSETS = ["BTC", "ETH", "SOL", "DOGE", "ARB", "OP", "AVAX", "LINK", "WIF", "PEPE", "TAO", "HYPE", "SPX", "FARTCOIN"]
 INTERVAL = "4h"
+
+INTERVAL_HOURS = {
+    "1m": 1 / 60, "3m": 3 / 60, "5m": 5 / 60, "15m": 0.25,
+    "30m": 0.5, "1h": 1, "2h": 2, "4h": 4, "8h": 8, "12h": 12, "1d": 24,
+}
 LOOKBACK_DAYS = 730  # ~2 years
 
 # HL rate limit: 1200 weight/min. Be conservative.
@@ -119,7 +124,8 @@ async def fetch_hl_candles(
     """
     all_candles: list[CandleData] = []
     cursor = start_ms
-    chunk_ms = 5000 * 4 * 3600 * 1000  # ~5000 bars × 4h in ms
+    interval_hours = INTERVAL_HOURS.get(interval, 4)
+    chunk_ms = int(5000 * interval_hours * 3600 * 1000)  # ~5000 bars in ms
 
     while cursor < end_ms:
         chunk_end = min(cursor + chunk_ms, end_ms)
@@ -134,7 +140,11 @@ async def fetch_hl_candles(
         })
 
         if not raw:
-            break
+            # No data in this chunk — advance cursor and keep trying
+            # (HL may not have data this far back for sub-4h intervals)
+            cursor = chunk_end + 1
+            await asyncio.sleep(HL_REQUEST_DELAY)
+            continue
 
         for c in raw:
             all_candles.append(CandleData(
@@ -205,13 +215,16 @@ def compute_fingerprints(
     funding: dict[str, list[FundingSnapshot]],
     primary: str = "BTC",
     secondary: str = "ETH",
+    interval: str = "4h",
 ) -> list[Fingerprint]:
     """Compute fingerprints from backfilled data.
 
     Aligns candle data by timestamp, feeds incrementally to the engines,
-    and produces one fingerprint per 4h bar (after warmup).
+    and produces one fingerprint per bar (after warmup).
     """
-    engine = FingerprintEngine(primary_asset=primary, secondary_asset=secondary)
+    interval_hours = INTERVAL_HOURS.get(interval, 4)
+    engine = FingerprintEngine(primary_asset=primary, secondary_asset=secondary,
+                               interval_hours=interval_hours)
     surface_engine = FundingSurfaceEngine(top_n=10)
 
     # Sort candles by timestamp
@@ -225,19 +238,21 @@ def compute_fingerprints(
     # Index secondary candles by timestamp for alignment
     secondary_by_ts: dict[int, CandleData] = {c.timestamp_ms: c for c in secondary_candles}
 
-    # Build funding timeline: group by closest 4h bar
+    # Build funding timeline: group by closest bar
+    bar_ms_size = int(interval_hours * 3600 * 1000)
     funding_by_bar: dict[int, dict[str, list[float]]] = {}
     for asset_name, snapshots in funding.items():
         for snap in snapshots:
-            bar_ms = (snap.timestamp_ms // (4 * 3600 * 1000)) * (4 * 3600 * 1000)
+            bar_ms = (snap.timestamp_ms // bar_ms_size) * bar_ms_size
             if bar_ms not in funding_by_bar:
                 funding_by_bar[bar_ms] = {}
             if asset_name not in funding_by_bar[bar_ms]:
                 funding_by_bar[bar_ms][asset_name] = []
             funding_by_bar[bar_ms][asset_name].append(snap.rate)
 
-    # Warmup: need 180 bars (~30 days) before we start fingerprinting
-    warmup_bars = 180
+    # Warmup: need enough bars for 30 days before we start fingerprinting
+    bars_per_day = 24.0 / interval_hours
+    warmup_bars = int(30 * bars_per_day)
     fingerprints: list[Fingerprint] = []
 
     for i, candle in enumerate(primary_candles):
@@ -263,7 +278,7 @@ def compute_fingerprints(
                 timestamps=[ts_sec],
             )
 
-        bar_ms = (candle.timestamp_ms // (4 * 3600 * 1000)) * (4 * 3600 * 1000)
+        bar_ms = (candle.timestamp_ms // bar_ms_size) * bar_ms_size
         if bar_ms in funding_by_bar:
             rates = {}
             for asset_name, rate_list in funding_by_bar[bar_ms].items():
@@ -284,11 +299,12 @@ def compute_fingerprints(
 async def run_backfill(
     lookback_days: int = LOOKBACK_DAYS,
     data_dir: str = "data/fingerprints",
+    interval: str = INTERVAL,
 ) -> BackfillResult:
     """Run the full backfill pipeline.
 
-    1. Fetch candles from Hyperliquid (BTC, ETH)
-    2. Fetch funding rates from Hyperliquid (10 assets, sequentially with delays)
+    1. Fetch candles from Hyperliquid
+    2. Fetch funding rates from Hyperliquid (sequentially with delays)
     3. Compute fingerprints
     4. Store in Parquet
     """
@@ -306,7 +322,7 @@ async def run_backfill(
         for asset in CANDLE_ASSETS:
             logger.info("fetching_candles", asset=asset, source="hyperliquid")
             try:
-                candles = await fetch_hl_candles(client, asset, INTERVAL, start_ms, now_ms)
+                candles = await fetch_hl_candles(client, asset, interval, start_ms, now_ms)
                 result.candles[asset] = candles
                 logger.info("candles_fetched", asset=asset, count=len(candles))
             except Exception as e:
@@ -331,7 +347,7 @@ async def run_backfill(
 
     # --- Compute fingerprints ---
     logger.info("computing_fingerprints")
-    result.fingerprints = compute_fingerprints(result.candles, result.funding)
+    result.fingerprints = compute_fingerprints(result.candles, result.funding, interval=interval)
     logger.info("fingerprints_computed", count=len(result.fingerprints))
 
     # --- Store ---

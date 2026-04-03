@@ -46,7 +46,7 @@ def make_residual_mean_reversion(data: HistoricalData) -> StrategyEvaluator:
         if ret_1d is None or abs(ret_1d) < 0.01:
             return None
 
-        beta = data.rolling_beta(asset, "BTC", ts, 42)
+        beta = data.rolling_beta(asset, "BTC", ts, data.b(42))
         if beta is None:
             return None
 
@@ -60,8 +60,8 @@ def make_residual_mean_reversion(data: HistoricalData) -> StrategyEvaluator:
             return None  # move was explained by BTC, no idiosyncratic signal
 
         # Check vol is elevated (same as original mean_reversion)
-        vol = data.realized_vol(asset, ts, 42)
-        vol_long = data.realized_vol(asset, ts, 180)
+        vol = data.realized_vol(asset, ts, data.b(42))
+        vol_long = data.realized_vol(asset, ts, data.b(180))
         if vol is None or vol_long is None or vol_long <= 0:
             return None
         if vol / vol_long < VOL_RATIO_MIN:
@@ -95,11 +95,11 @@ def make_residual_rsi_regime(data: HistoricalData) -> StrategyEvaluator:
         if asset == "BTC":
             return None
 
-        rsi_val = data.rsi(asset, ts, 14)
+        rsi_val = data.rsi(asset, ts, data.b(14))
         if rsi_val is None:
             return None
 
-        sma_val = data.sma(asset, ts, TREND_BARS)
+        sma_val = data.sma(asset, ts, data.b(TREND_BARS))
         candle = data.get_candle_at(asset, ts)
         if sma_val is None or candle is None:
             return None
@@ -115,7 +115,7 @@ def make_residual_rsi_regime(data: HistoricalData) -> StrategyEvaluator:
             return None
 
         # Beta filter: is BTC also extreme? If so, this is just beta.
-        btc_rsi = data.rsi("BTC", ts, 14)
+        btc_rsi = data.rsi("BTC", ts, data.b(14))
         if btc_rsi is not None:
             # If BTC RSI is similarly extreme, the alt is just tracking BTC
             if rsi_val <= RSI_EXTREME_LOW and btc_rsi <= 35:
@@ -144,10 +144,10 @@ def make_residual_breakout(data: HistoricalData) -> StrategyEvaluator:
         if asset == "BTC":
             return None
 
-        asset_candles = data.get_recent_candles(asset, ts, PERIOD)
-        btc_candles = data.get_recent_candles("BTC", ts, PERIOD)
+        asset_candles = data.get_recent_candles(asset, ts, data.b(PERIOD))
+        btc_candles = data.get_recent_candles("BTC", ts, data.b(PERIOD))
 
-        if len(asset_candles) < PERIOD or len(btc_candles) < PERIOD:
+        if len(asset_candles) < data.b(PERIOD) or len(btc_candles) < data.b(PERIOD):
             return None
 
         # Compute ratio series (asset / BTC)
@@ -199,7 +199,7 @@ def make_btc_leads_alt_momentum(data: HistoricalData) -> StrategyEvaluator:
         if btc_mom is None or abs(btc_mom) < BTC_MOM_THRESHOLD:
             return None
 
-        beta = data.rolling_beta(asset, "BTC", ts, 42)
+        beta = data.rolling_beta(asset, "BTC", ts, data.b(42))
         if beta is None or abs(beta) < BETA_MIN:
             return None  # not a high-beta alt
 
@@ -232,7 +232,7 @@ def make_btc_leads_alt_reversal(data: HistoricalData) -> StrategyEvaluator:
         if btc_4h is None or abs(btc_4h) < BTC_IMPULSE:
             return None
 
-        beta = data.rolling_beta(asset, "BTC", ts, 42)
+        beta = data.rolling_beta(asset, "BTC", ts, data.b(42))
         if beta is None or abs(beta) < BETA_MIN:
             return None
 
@@ -324,8 +324,8 @@ def make_beta_compression(data: HistoricalData) -> StrategyEvaluator:
         if asset == "BTC":
             return None
 
-        beta_short = data.rolling_beta(asset, "BTC", ts, BETA_SHORT)
-        beta_long = data.rolling_beta(asset, "BTC", ts, BETA_LONG)
+        beta_short = data.rolling_beta(asset, "BTC", ts, data.b(BETA_SHORT))
+        beta_long = data.rolling_beta(asset, "BTC", ts, data.b(BETA_LONG))
         if beta_short is None or beta_long is None or abs(beta_long) < 0.1:
             return None
 
@@ -369,7 +369,7 @@ def make_high_beta_funding_carry(data: HistoricalData) -> StrategyEvaluator:
         if rate is None or abs(rate) < FUNDING_THRESHOLD:
             return None
 
-        beta = data.rolling_beta(asset, "BTC", ts, 42)
+        beta = data.rolling_beta(asset, "BTC", ts, data.b(42))
         if beta is None or abs(beta) < BETA_MIN:
             return None  # not high-beta enough
 

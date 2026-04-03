@@ -45,13 +45,13 @@ def make_tsmom_classic(data: HistoricalData) -> StrategyEvaluator:
         ret = data.backward_return(data.primary, ts, LOOKBACK_BARS * 4)
         if ret is None:
             return None
-        vol = data.realized_vol(data.primary, ts, LOOKBACK_BARS)
+        vol = data.realized_vol(data.primary, ts, data.b(LOOKBACK_BARS))
         if vol is None or vol <= 0:
             return None
 
         direction = 1.0 if ret > 0 else -1.0
         # Vol-scale: target / realized (annualized)
-        ann_vol = vol * math.sqrt(6 * 365)  # 6 bars/day, 365 days
+        ann_vol = vol * math.sqrt(24 / data.interval_hours * 365)
         scale = min(VOL_TARGET / ann_vol, 2.0) if ann_vol > 0 else 1.0
 
         fwd_ret = data.forward_return(data.primary, ts, fwd_hours)
@@ -104,8 +104,8 @@ def make_tsmom_adaptive(data: HistoricalData) -> StrategyEvaluator:
     VOL_LONG = 180   # 30 days
 
     def evaluate(ts: float, fwd_hours: float) -> float | None:
-        vol_short = data.realized_vol(data.primary, ts, VOL_SHORT)
-        vol_long = data.realized_vol(data.primary, ts, VOL_LONG)
+        vol_short = data.realized_vol(data.primary, ts, data.b(VOL_SHORT))
+        vol_long = data.realized_vol(data.primary, ts, data.b(VOL_LONG))
         if vol_short is None or vol_long is None or vol_long <= 0:
             return None
 
@@ -145,11 +145,11 @@ def make_tsmom_volscaled(data: HistoricalData) -> StrategyEvaluator:
         if ret is None:
             return None
 
-        vol = data.realized_vol(data.primary, ts, VOL_WINDOW)
+        vol = data.realized_vol(data.primary, ts, data.b(VOL_WINDOW))
         if vol is None or vol <= 0:
             return None
 
-        ann_vol = vol * math.sqrt(6 * 365)
+        ann_vol = vol * math.sqrt(24 / data.interval_hours * 365)
         scale = min(VOL_TARGET / ann_vol, 3.0) if ann_vol > 0 else 1.0
 
         direction = 1.0 if ret > 0 else -1.0
@@ -177,8 +177,8 @@ def make_xsection_momentum(data: HistoricalData) -> StrategyEvaluator:
     def evaluate(ts: float, fwd_hours: float) -> float | None:
         scores: dict[str, float] = {}
         for asset_name in ["BTC", "ETH", "SOL", "DOGE", "ARB", "OP", "AVAX", "LINK", "WIF"]:
-            hist = data.funding_asset_history(asset_name, ts, LOOKBACK_BARS)
-            if len(hist) >= LOOKBACK_BARS // 2:
+            hist = data.funding_asset_history(asset_name, ts, data.b(LOOKBACK_BARS))
+            if len(hist) >= data.b(LOOKBACK_BARS) // 2:
                 scores[asset_name] = sum(hist)
 
         if len(scores) < MIN_ASSETS:
@@ -227,8 +227,8 @@ def make_52w_high_momentum(data: HistoricalData) -> StrategyEvaluator:
     FAR_FROM_HIGH_PCT = 0.80  # more than 20% below high
 
     def evaluate(ts: float, fwd_hours: float) -> float | None:
-        candles = data.get_recent_candles(data.primary, ts, HIGH_WINDOW)
-        if len(candles) < HIGH_WINDOW // 2:
+        candles = data.get_recent_candles(data.primary, ts, data.b(HIGH_WINDOW))
+        if len(candles) < data.b(HIGH_WINDOW) // 2:
             return None
 
         high = max(c.high for c in candles)
@@ -271,12 +271,12 @@ def make_funding_carry_voladj(data: HistoricalData) -> StrategyEvaluator:
         if btc_rate is None or abs(btc_rate) < THRESHOLD:
             return None
 
-        vol = data.realized_vol(data.primary, ts, VOL_WINDOW)
+        vol = data.realized_vol(data.primary, ts, data.b(VOL_WINDOW))
         if vol is None or vol <= 0:
             return None
 
         # Inverse vol sizing (higher vol → smaller position)
-        ann_vol = vol * math.sqrt(6 * 365)
+        ann_vol = vol * math.sqrt(24 / data.interval_hours * 365)
         vol_scale = min(0.15 / ann_vol, 2.0) if ann_vol > 0 else 1.0
 
         direction = -1.0 if btc_rate > 0 else 1.0
@@ -377,11 +377,11 @@ def make_funding_term_structure(data: HistoricalData) -> StrategyEvaluator:
     DIVERGENCE_THRESHOLD = 0.0005
 
     def evaluate(ts: float, fwd_hours: float) -> float | None:
-        hist = data.funding_asset_history(data.primary, ts, LONG_BARS)
-        if len(hist) < LONG_BARS:
+        hist = data.funding_asset_history(data.primary, ts, data.b(LONG_BARS))
+        if len(hist) < data.b(LONG_BARS):
             return None
 
-        short_avg = sum(hist[-SHORT_BARS:]) / SHORT_BARS
+        short_avg = sum(hist[-data.b(SHORT_BARS):]) / data.b(SHORT_BARS)
         long_avg = sum(hist) / len(hist)
         divergence = short_avg - long_avg
 
@@ -417,7 +417,7 @@ def make_bollinger_reversion(data: HistoricalData) -> StrategyEvaluator:
     RSI_OVERBOUGHT = 70.0
 
     def evaluate(ts: float, fwd_hours: float) -> float | None:
-        bb = data.bollinger(data.primary, ts, BB_PERIOD, BB_MULT)
+        bb = data.bollinger(data.primary, ts, data.b(BB_PERIOD), BB_MULT)
         if bb is None:
             return None
         lower, _mid, upper = bb
@@ -426,7 +426,7 @@ def make_bollinger_reversion(data: HistoricalData) -> StrategyEvaluator:
         if candle is None:
             return None
 
-        rsi_val = data.rsi(data.primary, ts, 14)
+        rsi_val = data.rsi(data.primary, ts, data.b(14))
         if rsi_val is None:
             return None
 
@@ -456,11 +456,11 @@ def make_rsi_regime_reversion(data: HistoricalData) -> StrategyEvaluator:
     TREND_BARS = 120  # ~20 days SMA for trend filter
 
     def evaluate(ts: float, fwd_hours: float) -> float | None:
-        rsi_val = data.rsi(data.primary, ts, RSI_PERIOD)
+        rsi_val = data.rsi(data.primary, ts, data.b(RSI_PERIOD))
         if rsi_val is None:
             return None
 
-        sma_val = data.sma(data.primary, ts, TREND_BARS)
+        sma_val = data.sma(data.primary, ts, data.b(TREND_BARS))
         candle = data.get_candle_at(data.primary, ts)
         if sma_val is None or candle is None:
             return None
@@ -491,15 +491,16 @@ def make_ou_pairs(data: HistoricalData) -> StrategyEvaluator:
     ENTRY_Z = 2.0
 
     def evaluate(ts: float, fwd_hours: float) -> float | None:
-        btc_prices = data.closes(data.primary, ts, WINDOW)
-        eth_prices = data.closes(data.secondary, ts, WINDOW)
-        if len(btc_prices) < WINDOW or len(eth_prices) < WINDOW:
+        window = data.b(WINDOW)
+        btc_prices = data.closes(data.primary, ts, window)
+        eth_prices = data.closes(data.secondary, ts, window)
+        if len(btc_prices) < window or len(eth_prices) < window:
             return None
 
         # Compute ratio series
         ratios = [e / b if b > 0 else 0 for e, b in zip(eth_prices, btc_prices)]
         ratios = [r for r in ratios if r > 0]
-        if len(ratios) < WINDOW // 2:
+        if len(ratios) < window // 2:
             return None
 
         mean_ratio = sum(ratios) / len(ratios)
@@ -542,7 +543,7 @@ def make_donchian_breakout(data: HistoricalData) -> StrategyEvaluator:
     PERIOD = 20
 
     def evaluate(ts: float, fwd_hours: float) -> float | None:
-        channel = data.donchian(data.primary, ts, PERIOD)
+        channel = data.donchian(data.primary, ts, data.b(PERIOD))
         if channel is None:
             return None
         low, high = channel
@@ -553,7 +554,7 @@ def make_donchian_breakout(data: HistoricalData) -> StrategyEvaluator:
 
         # Breakout: close above high or below low of the lookback
         # Compare to *previous* channel (exclude current bar)
-        prev_channel = data.donchian(data.primary, ts - 4 * 3600, PERIOD)
+        prev_channel = data.donchian(data.primary, ts - data.interval_hours * 3600, data.b(PERIOD))
         if prev_channel is None:
             return None
         prev_low, prev_high = prev_channel
@@ -585,8 +586,8 @@ def make_volatility_squeeze(data: HistoricalData) -> StrategyEvaluator:
     KELT_MULT = 1.5
 
     def evaluate(ts: float, fwd_hours: float) -> float | None:
-        bb = data.bollinger(data.primary, ts, BB_PERIOD, BB_MULT)
-        kelt = data.keltner(data.primary, ts, KELT_PERIOD, KELT_MULT)
+        bb = data.bollinger(data.primary, ts, data.b(BB_PERIOD), BB_MULT)
+        kelt = data.keltner(data.primary, ts, data.b(KELT_PERIOD), KELT_MULT)
         if bb is None or kelt is None:
             return None
 
@@ -597,8 +598,8 @@ def make_volatility_squeeze(data: HistoricalData) -> StrategyEvaluator:
         in_squeeze = bb_lower > kelt_lower and bb_upper < kelt_upper
 
         # Check if squeeze just released (was in squeeze previously)
-        prev_bb = data.bollinger(data.primary, ts - 4 * 3600, BB_PERIOD, BB_MULT)
-        prev_kelt = data.keltner(data.primary, ts - 4 * 3600, KELT_PERIOD, KELT_MULT)
+        prev_bb = data.bollinger(data.primary, ts - data.interval_hours * 3600, data.b(BB_PERIOD), BB_MULT)
+        prev_kelt = data.keltner(data.primary, ts - data.interval_hours * 3600, data.b(KELT_PERIOD), KELT_MULT)
         if prev_bb is None or prev_kelt is None:
             return None
 
@@ -635,8 +636,8 @@ def make_vol_term_structure(data: HistoricalData) -> StrategyEvaluator:
     COMPRESSION_THRESHOLD = 0.6  # short/long < 0.6 = compressing
 
     def evaluate(ts: float, fwd_hours: float) -> float | None:
-        vol_s = data.realized_vol(data.primary, ts, VOL_SHORT)
-        vol_l = data.realized_vol(data.primary, ts, VOL_LONG)
+        vol_s = data.realized_vol(data.primary, ts, data.b(VOL_SHORT))
+        vol_l = data.realized_vol(data.primary, ts, data.b(VOL_LONG))
         if vol_s is None or vol_l is None or vol_l <= 0:
             return None
 
@@ -680,8 +681,8 @@ def make_dual_ma_crossover(data: HistoricalData) -> StrategyEvaluator:
     MIN_GAP_PCT = 0.002  # 0.2% minimum gap between EMAs
 
     def evaluate(ts: float, fwd_hours: float) -> float | None:
-        fast_ema = data.ema(data.primary, ts, FAST)
-        slow_ema = data.ema(data.primary, ts, SLOW)
+        fast_ema = data.ema(data.primary, ts, data.b(FAST))
+        slow_ema = data.ema(data.primary, ts, data.b(SLOW))
         if fast_ema is None or slow_ema is None or slow_ema <= 0:
             return None
 
@@ -710,18 +711,19 @@ def make_kaufman_adaptive(data: HistoricalData) -> StrategyEvaluator:
     SLOW_SC = 2.0 / (30 + 1)   # slow smoothing constant
 
     def evaluate(ts: float, fwd_hours: float) -> float | None:
-        prices = data.closes(data.primary, ts, ER_PERIOD + 30)  # extra for KAMA warmup
-        if len(prices) < ER_PERIOD + 10:
+        er_period = data.b(ER_PERIOD)
+        prices = data.closes(data.primary, ts, er_period + data.b(30))  # extra for KAMA warmup
+        if len(prices) < er_period + 10:
             return None
 
         # Compute KAMA
         kama = prices[0]
         kama_prev = kama
-        for i in range(ER_PERIOD, len(prices)):
+        for i in range(er_period, len(prices)):
             # Efficiency Ratio
-            net_change = abs(prices[i] - prices[i - ER_PERIOD])
+            net_change = abs(prices[i] - prices[i - er_period])
             sum_changes = sum(abs(prices[j] - prices[j - 1])
-                              for j in range(i - ER_PERIOD + 1, i + 1))
+                              for j in range(i - er_period + 1, i + 1))
             er = net_change / sum_changes if sum_changes > 0 else 0
 
             # Smoothing constant
@@ -759,15 +761,15 @@ def make_atr_breakout(data: HistoricalData) -> StrategyEvaluator:
     ATR_STOP_MULT = 3.0
 
     def evaluate(ts: float, fwd_hours: float) -> float | None:
-        candles = data.get_recent_candles(data.primary, ts, BREAKOUT_PERIOD)
-        if len(candles) < BREAKOUT_PERIOD:
+        candles = data.get_recent_candles(data.primary, ts, data.b(BREAKOUT_PERIOD))
+        if len(candles) < data.b(BREAKOUT_PERIOD):
             return None
 
         current = candles[-1].close
         prev_high = max(c.high for c in candles[:-1])
         prev_low = min(c.low for c in candles[:-1])
 
-        atr_val = data.atr(data.primary, ts, ATR_PERIOD)
+        atr_val = data.atr(data.primary, ts, data.b(ATR_PERIOD))
         if atr_val is None:
             return None
 
@@ -781,7 +783,7 @@ def make_atr_breakout(data: HistoricalData) -> StrategyEvaluator:
             return None
 
         # Simulate forward: check if stopped out
-        fwd_bars = max(1, int(fwd_hours / 4))
+        fwd_bars = max(1, int(fwd_hours / data.interval_hours))
         fwd_candles = data.get_recent_candles(data.primary, ts + fwd_hours * 3600, fwd_bars + 1)
         if len(fwd_candles) < 2:
             return None
@@ -819,16 +821,17 @@ def make_btc_eth_ratio(data: HistoricalData) -> StrategyEvaluator:
     ENTRY_Z = 2.0
 
     def evaluate(ts: float, fwd_hours: float) -> float | None:
-        btc_prices = data.closes(data.primary, ts, WINDOW)
-        eth_prices = data.closes(data.secondary, ts, WINDOW)
-        if len(btc_prices) < WINDOW or len(eth_prices) < WINDOW:
+        window = data.b(WINDOW)
+        btc_prices = data.closes(data.primary, ts, window)
+        eth_prices = data.closes(data.secondary, ts, window)
+        if len(btc_prices) < window or len(eth_prices) < window:
             return None
 
         ratios = []
         for b, e in zip(btc_prices, eth_prices):
             if b > 0:
                 ratios.append(e / b)
-        if len(ratios) < WINDOW // 2:
+        if len(ratios) < window // 2:
             return None
 
         mean_r = sum(ratios) / len(ratios)
@@ -917,8 +920,8 @@ def make_liquidation_cascade(data: HistoricalData) -> StrategyEvaluator:
             return None
 
         # Check if funding is extreme (use historical context)
-        hist = data.funding_asset_history(data.primary, ts, 180)  # 30 days
-        if len(hist) < 90:
+        hist = data.funding_asset_history(data.primary, ts, data.b(180))  # 30 days
+        if len(hist) < data.b(90):
             return None
 
         sorted_hist = sorted(abs(r) for r in hist)
@@ -927,8 +930,8 @@ def make_liquidation_cascade(data: HistoricalData) -> StrategyEvaluator:
             return None  # not extreme enough
 
         # Check vol expansion
-        vol_short = data.realized_vol(data.primary, ts, 6)   # 1 day
-        vol_long = data.realized_vol(data.primary, ts, 42)    # 7 days
+        vol_short = data.realized_vol(data.primary, ts, data.b(6))   # 1 day
+        vol_long = data.realized_vol(data.primary, ts, data.b(42))    # 7 days
         if vol_short is None or vol_long is None or vol_long <= 0:
             return None
 
@@ -1005,8 +1008,8 @@ def make_beta_rotation(data: HistoricalData) -> StrategyEvaluator:
             return None  # need clear directional signal
 
         # Estimate betas from funding rate co-movement
-        btc_hist = data.funding_asset_history(data.primary, ts, BETA_WINDOW)
-        if len(btc_hist) < BETA_WINDOW // 2:
+        btc_hist = data.funding_asset_history(data.primary, ts, data.b(BETA_WINDOW))
+        if len(btc_hist) < data.b(BETA_WINDOW) // 2:
             return None
 
         # Use aggregate funding dispersion as a beta signal

@@ -71,14 +71,14 @@ def make_btc_eth_ratio_flipped(data: HistoricalData) -> StrategyEvaluator:
     ENTRY_Z = 2.0
 
     def evaluate(ts: float, fwd_hours: float) -> float | None:
-        btc_prices = data.closes(data.primary, ts, WINDOW)
-        eth_prices = data.closes(data.secondary, ts, WINDOW)
-        if len(btc_prices) < WINDOW or len(eth_prices) < WINDOW:
+        btc_prices = data.closes(data.primary, ts, data.b(WINDOW))
+        eth_prices = data.closes(data.secondary, ts, data.b(WINDOW))
+        if len(btc_prices) < data.b(WINDOW) or len(eth_prices) < data.b(WINDOW):
             return None
 
         ratios = [e / b if b > 0 else 0 for e, b in zip(eth_prices, btc_prices)]
         ratios = [r for r in ratios if r > 0]
-        if len(ratios) < WINDOW // 2:
+        if len(ratios) < data.b(WINDOW) // 2:
             return None
 
         mean_ratio = sum(ratios) / len(ratios)
@@ -113,14 +113,14 @@ def make_ou_pairs_flipped(data: HistoricalData) -> StrategyEvaluator:
     ENTRY_Z = 2.0
 
     def evaluate(ts: float, fwd_hours: float) -> float | None:
-        btc_prices = data.closes(data.primary, ts, WINDOW)
-        eth_prices = data.closes(data.secondary, ts, WINDOW)
-        if len(btc_prices) < WINDOW or len(eth_prices) < WINDOW:
+        btc_prices = data.closes(data.primary, ts, data.b(WINDOW))
+        eth_prices = data.closes(data.secondary, ts, data.b(WINDOW))
+        if len(btc_prices) < data.b(WINDOW) or len(eth_prices) < data.b(WINDOW):
             return None
 
         ratios = [e / b if b > 0 else 0 for e, b in zip(eth_prices, btc_prices)]
         ratios = [r for r in ratios if r > 0]
-        if len(ratios) < WINDOW // 2:
+        if len(ratios) < data.b(WINDOW) // 2:
             return None
 
         mean_ratio = sum(ratios) / len(ratios)
@@ -156,11 +156,11 @@ def make_rsi_regime_flipped(data: HistoricalData) -> StrategyEvaluator:
     TREND_BARS = 120
 
     def evaluate(ts: float, fwd_hours: float) -> float | None:
-        rsi_val = data.rsi(data.primary, ts, RSI_PERIOD)
+        rsi_val = data.rsi(data.primary, ts, data.b(RSI_PERIOD))
         if rsi_val is None:
             return None
 
-        sma_val = data.sma(data.primary, ts, TREND_BARS)
+        sma_val = data.sma(data.primary, ts, data.b(TREND_BARS))
         candle = data.get_candle_at(data.primary, ts)
         if sma_val is None or candle is None:
             return None
@@ -212,13 +212,13 @@ def make_consensus_fade(data: HistoricalData) -> StrategyEvaluator:
             votes.append(1.0 if ret_30d > 0 else -1.0)
 
         # EMA cross
-        fast = data.ema(data.primary, ts, 12)
-        slow = data.ema(data.primary, ts, 52)
+        fast = data.ema(data.primary, ts, data.b(12))
+        slow = data.ema(data.primary, ts, data.b(52))
         if fast is not None and slow is not None:
             votes.append(1.0 if fast > slow else -1.0)
 
         # RSI direction
-        rsi_val = data.rsi(data.primary, ts, 14)
+        rsi_val = data.rsi(data.primary, ts, data.b(14))
         if rsi_val is not None:
             votes.append(1.0 if rsi_val > 50 else -1.0)
 
@@ -266,8 +266,8 @@ def make_novel_state_trend(data: HistoricalData) -> StrategyEvaluator:
     MOM_THRESHOLD = 0.02       # need clear direction
 
     def evaluate(ts: float, fwd_hours: float) -> float | None:
-        vol_s = data.realized_vol(data.primary, ts, 6)
-        vol_l = data.realized_vol(data.primary, ts, 42)
+        vol_s = data.realized_vol(data.primary, ts, data.b(6))
+        vol_l = data.realized_vol(data.primary, ts, data.b(42))
         if vol_s is None or vol_l is None or vol_l <= 0:
             return None
 
@@ -305,7 +305,7 @@ def make_disagreement_breakout(data: HistoricalData) -> StrategyEvaluator:
         # Trend signal
         ret_7d = data.backward_return(data.primary, ts, 168)
         # Mean-reversion signal
-        rsi_val = data.rsi(data.primary, ts, 14)
+        rsi_val = data.rsi(data.primary, ts, data.b(14))
 
         if ret_7d is None or rsi_val is None:
             return None
@@ -324,8 +324,8 @@ def make_disagreement_breakout(data: HistoricalData) -> StrategyEvaluator:
             return None
 
         # Check vol is compressed (about to break)
-        vol_s = data.realized_vol(data.primary, ts, 6)
-        vol_l = data.realized_vol(data.primary, ts, 42)
+        vol_s = data.realized_vol(data.primary, ts, data.b(6))
+        vol_l = data.realized_vol(data.primary, ts, data.b(42))
         if vol_s is None or vol_l is None or vol_l <= 0:
             return None
 
@@ -383,8 +383,8 @@ def make_funding_filtered_trend(data: HistoricalData) -> StrategyEvaluator:
                 agreements += 1  # aligned or neutral
 
         # EMA cross agreement
-        fast = data.ema(data.primary, ts, 12)
-        slow = data.ema(data.primary, ts, 52)
+        fast = data.ema(data.primary, ts, data.b(12))
+        slow = data.ema(data.primary, ts, data.b(52))
         if fast is not None and slow is not None:
             checks += 1
             ema_dir = 1.0 if fast > slow else -1.0
@@ -392,7 +392,7 @@ def make_funding_filtered_trend(data: HistoricalData) -> StrategyEvaluator:
                 agreements += 1
 
         # RSI agreement (not overbought if going long, not oversold if going short)
-        rsi_val = data.rsi(data.primary, ts, 14)
+        rsi_val = data.rsi(data.primary, ts, data.b(14))
         if rsi_val is not None:
             checks += 1
             if carry_dir > 0 and rsi_val < 65:
