@@ -1,32 +1,16 @@
 # crack-the-nut
 
-A shared Python toolkit for building automated trading bots. Extract patterns once, reuse everywhere.
+A strategy research toolkit for crypto perpetual futures on Hyperliquid. 63 backtestable strategies, walk-forward validation, multi-resolution analysis (15m to 4h), and bar-by-bar exit logic simulation.
 
-**Goal:** Help us all toward financial independence so we have more resources to do everything else that matters.
+**Goal:** Systematically identify profitable trading strategies across crypto assets, validate them out-of-sample, and optimize exit logic -- all without lookahead bias.
 
 ## What Is This?
 
-This is a **library of composable modules** — not a framework, not a monolith. You pick the pieces you need and wire them into your own bot. Every module is async Python 3.12, battle-tested from 4 live trading bots.
+This repo has two layers:
 
-The toolkit handles the boring infrastructure (config, database, scheduling, notifications, risk management) so you can focus on **strategy**.
+1. **A shared trading toolkit** (`config/`, `data/`, `strategies/`, `exchanges/`, `execution/`, etc.) -- composable modules for building trading bots. Config, database, scheduling, notifications, risk management.
 
-## Modules
-
-| Module | Import | What it does |
-|--------|--------|-------------|
-| **config** | `from config import BotSettings` | Pydantic-settings base class. Loads from `.env`. Subclass to add your own fields. |
-| **data** | `from data import Database, Trade` | Async SQLite wrapper with `upsert`, `get_latest`, `get_range`, `insert_batch`. Common trade/signal/summary schemas included. |
-| **strategies** | `from strategies.base import Strategy, Signal` | Abstract base class — implement `on_data`, `should_enter`, `should_exit`. Same interface for backtesting and live. |
-| **exchanges** | `from exchanges.hyperliquid import HyperliquidAdapter` | Exchange adapters: Hyperliquid (perps), Polymarket (prediction markets), DEX/Web3 (Uniswap V3 style). All implement `ExchangeAdapter` interface. |
-| **execution** | `from execution import RiskManager, KellySizer` | Risk gates (position limits, daily loss, kill switch), half-Kelly position sizing, correlation group tracking, gas guards for on-chain bots. |
-| **scoring** | `from scoring import CompositeScorer, SubScore` | Register weighted sub-scores, get a 0-100 composite. Used for multi-factor signal generation. |
-| **backtest** | `from backtest import BacktestRunner` | Feed candles to a Strategy, get back win rate, PnL, Sharpe ratio, max drawdown, profit factor. |
-| **agents** | `from agents import LLMAnalyst` | Ensemble LLM predictions (3 temperatures, take median). Confidence from variance. 2-hour cache. Anthropic or OpenAI. |
-| **scheduler** | `from scheduler import SchedulerRunner` | APScheduler wrapper — `add_interval()`, `add_cron()`, graceful shutdown on SIGINT/SIGTERM. |
-| **notify** | `from notify import TelegramNotifier` | Telegram alerts with rate limiting (20 msg/min). Formatting helpers for trades, signals, daily reports. |
-| **analog** | `from analog import AnalogFinder, MetaController` | Similarity-based strategy selection: fingerprint the market, find historical analogs via KNN, score strategies, pick the best one. |
-| **analog.walkforward** | `from analog import WalkForward` | Walk-forward evaluation: step through history, fit on past-only data, measure actual outcomes. No lookahead. |
-| **analog.champion** | `from analog import Arena, ChallengerConfig` | Champion/challenger arena: compare configurations via walk-forward, replace only when a challenger beats the champion with margin. |
+2. **A strategy research engine** (`analog/`) -- the main focus of recent work. 63 strategies evaluated across 13 assets with walk-forward backtesting, multi-resolution analysis, and exit optimization. This is where the research happens.
 
 ## Quick Start
 
@@ -37,174 +21,167 @@ python3 -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
 ```
 
-## Building a Bot
+## Architecture: The `analog/` Module
 
-### 1. Create your config
+The research engine lives in `analog/`. Here is what each file does:
 
-```python
-# my_bot/config.py
-from config import BotSettings
+| File | Purpose |
+|------|---------|
+| `backfill.py` | Pulls OHLCV candles + funding rates from Hyperliquid API. Supports configurable intervals (15m, 1h, 4h, etc). 13 assets: BTC, ETH, SOL, DOGE, ARB, OP, AVAX, LINK, WIF, TAO, HYPE, SPX, FARTCOIN. Caches to pickle for fast re-runs. |
+| `fingerprint.py` | Market state fingerprinting engine. Dense feature vectors (returns, vol, cross-asset, funding surface) for similarity search. Interval-aware. |
+| `evaluators.py` | `HistoricalData` class with O(log n) lookups, 20+ technical indicators (RSI, Bollinger, ATR, Donchian, Keltner, EMA, SMA), and the `simulate_exit()` bar-by-bar exit simulator with SL/TP/trailing stops. Contains the `b()` method for interval-agnostic bar scaling. |
+| `strategies.py` | 25 established strategies across 8 families: TSMOM, cross-sectional momentum, carry/funding, mean reversion, volatility, trend following, pairs/RV, crypto-native. |
+| `contrarian.py` | 9 contrarian strategies: flipped signals (strategies that predict backwards), consensus fade, disagreement breakout, funding-filtered trend. |
+| `beta_strategies.py` | 8 beta-adjusted strategies: residual mean reversion, residual breakout, BTC-led alt trading, beta compression, high-beta funding carry. |
+| `lead_lag.py` | 16 lead-lag strategies at multiple lag offsets (15m to 12h for BTC and ETH as leaders), plus `measure_lead_lag()` cross-correlation analysis. |
+| `surface.py` | Funding rate surface engine -- treats cross-asset funding rates as a yield curve with mean, dispersion, skew, momentum, and extreme count features. |
+| `store.py` | Parquet-backed fingerprint storage. |
+| `run_multi_asset.py` | Evaluate all strategies across all assets at 4h resolution. |
+| `run_15m_analysis.py` | Dual-resolution analysis: 1h strategies + 15m lead-lag measurement. |
+| `simulate_top_n.py` | Walk-forward portfolio simulation with concentrated strategy selection (rank by Sharpe on training period, trade top N on out-of-sample). |
+| `simulate_portfolio.py` | Full portfolio simulation with position sizing, compounding, walk-forward validation, monthly/strategy/asset breakdowns. |
+| `exit_analysis.py` | Exhaustive exit strategy comparison: 20 exit variants tested on top 20 strategy-asset combos. SL, TP, trailing stops, combinations. |
 
-class MySettings(BotSettings):
-    exchange_api_key: str = ""
-    my_custom_threshold: float = 0.05
-```
+### Supporting Modules (Trading Toolkit)
 
-### 2. Write a strategy
+| Module | What it does |
+|--------|-------------|
+| `config/` | Pydantic-settings base class. Loads from `.env`. |
+| `data/` | Async SQLite wrapper with upsert, batch operations, trade/signal schemas. |
+| `strategies/` | Abstract `Strategy` base class -- implement `on_data`, `should_enter`, `should_exit`. Same interface for backtesting and live. |
+| `exchanges/` | Exchange adapters: Hyperliquid (perps), Polymarket (prediction markets), DEX/Web3. |
+| `execution/` | Risk gates, half-Kelly sizing, correlation tracking, gas guards. |
+| `scoring/` | Composite scorer: register weighted sub-scores, get 0-100 signal. |
+| `backtest/` | Feed candles to a Strategy, get back win rate, P&L, Sharpe, drawdown, profit factor. |
+| `agents/` | Ensemble LLM predictions (3 temps, take median). |
+| `scheduler/` | APScheduler wrapper with graceful shutdown. |
+| `notify/` | Telegram alerts with rate limiting. |
 
-```python
-# my_bot/strategy.py
-from strategies.base import Strategy, Signal, Candle, Direction
+## How to Use -- Step by Step
 
-class MyStrategy(Strategy):
-    async def on_data(self, candle: Candle) -> None:
-        pass  # analyze new data
-
-    async def should_enter(self) -> Signal | None:
-        return Signal(asset="BTC", direction=Direction.LONG, confidence=0.8, entry_price=65000)
-
-    async def should_exit(self, position) -> bool:
-        return False  # your exit logic
-```
-
-### 3. Backtest it
-
-```python
-from backtest import BacktestRunner
-from my_bot.strategy import MyStrategy
-
-runner = BacktestRunner(MyStrategy(), initial_capital=10_000)
-result = await runner.run(candles)
-print(result.summary)
-# {'total_trades': 47, 'win_rate': '57.4%', 'total_pnl': 1230.50,
-#  'max_drawdown': '8.3%', 'sharpe_ratio': 1.82, 'profit_factor': 1.65}
-```
-
-### 4. Wire up live execution
-
-```python
-from exchanges.hyperliquid import HyperliquidAdapter
-from execution import RiskManager, KellySizer
-from scheduler import SchedulerRunner
-from notify import TelegramNotifier
-
-adapter = HyperliquidAdapter(private_key="...", account_address="...")
-risk = RiskManager(bankroll=1000.0)
-sizer = KellySizer(max_pct=0.05)
-notifier = TelegramNotifier(token="...", chat_id="...", prefix="[MY BOT]")
-
-# Schedule your strategy loop, daily reports, etc.
-runner = SchedulerRunner(timezone="America/New_York")
-runner.add_interval("check_signals", my_strategy_loop, minutes=5)
-runner.add_cron("daily_report", send_daily_report, hour=23, minute=59)
-await runner.run_forever()
-```
-
-### 5. Deploy
+### 1. Backfill Data
 
 ```bash
-# On a VPS (we use Hetzner, $3-5/mo):
-pip install -e .
-cp .env.example .env  # fill in your keys
-# Create a systemd service, start with paper_trade=True
+# Default 4h candles, 730 days (Hyperliquid has 2+ years at 4h)
+python3 -m analog.backfill
+
+# 1h resolution (~7 months available)
+python3 -m analog.backfill --interval 1h
+
+# Data is cached to data/backfill_{interval}.pkl for fast re-runs
 ```
 
-See [docs/architecture.md](docs/architecture.md) for the full design walkthrough and directory conventions.
+### 2. Run Multi-Asset Analysis
 
-## Strategy Library (55 strategies, 5 families)
+```bash
+# 4h bars, 730 days, 4h forward evaluation window
+python3 -m analog.run_multi_asset --days 730 --forward 4.0
 
-The `analog/` module contains 55 backtestable strategies organized into families:
+# Show top 40 combos
+python3 -m analog.run_multi_asset --days 730 --top 40
+```
+
+### 3. Run High-Resolution Analysis
+
+```bash
+# 1h strategy eval + 15m lead-lag, dual resolution
+python3 -m analog.run_15m_analysis
+
+# Reuse cached data (skip backfill)
+python3 -m analog.run_15m_analysis --skip-backfill
+```
+
+### 4. Find Top Strategies (Walk-Forward)
+
+```bash
+# Rank by Sharpe on training half, simulate top N on out-of-sample half
+python3 -m analog.simulate_top_n
+```
+
+### 5. Test Exit Logic
+
+```bash
+# 20 exit variants across top 20 strategy-asset combos
+python3 -m analog.exit_analysis
+```
+
+### 6. Simulate Full Portfolio
+
+```bash
+# Walk-forward portfolio with position sizing
+python3 -m analog.simulate_portfolio --capital 1000 --interval 4h
+
+# Adjust position sizing and max concurrent positions
+python3 -m analog.simulate_portfolio --capital 5000 --pos-pct 0.20 --max-pos 5
+```
+
+### 7. Lead-Lag Analysis
+
+```bash
+# Measure BTC/ETH -> alt cross-correlations at various lags
+python3 -m analog.lead_lag --days 730
+```
+
+## Using with Claude
+
+This repo is designed to be explored and extended with Claude Code. Useful prompts:
+
+- "Add a new strategy based on [paper/idea] to strategies.py"
+- "Run the portfolio simulation with $5000 starting capital and 20% position sizing"
+- "What would happen if we only traded mean reversion strategies?"
+- "Backfill 1h data and compare strategy performance at 1h vs 4h"
+- "Analyze which strategies work best on high-volatility altcoins like WIF and FARTCOIN"
+- "Build a regime detector that switches between trend and mean-reversion strategies"
+
+## Strategy Library (63 strategies, 5 families)
 
 | Family | File | Count | Description |
 |--------|------|:-----:|-------------|
-| **Established** | `analog/strategies.py` | 25 | Academic/practitioner strategies: TSMOM, cross-sectional momentum, funding carry, mean reversion, volatility, trend following, pairs, crypto-native |
-| **Contrarian** | `analog/contrarian.py` | 9 | Flipped signals (strategies that predict backwards), consensus fade, novel-state trend, disagreement breakout, funding-filtered |
-| **Beta-adjusted** | `analog/beta_strategies.py` | 8 | Residual strategies (strip out BTC beta), BTC-led alt trading, beta-relative |
-| **Lead-lag** | `analog/lead_lag.py` | 8 | BTC/ETH as leading indicators for alt catch-up, impulse catch-up, reversal fade |
-| **Original** | `analog/evaluators.py` | 5 | Funding arb, multi-asset funding, trend follow, mean reversion, breakout |
+| **Original** | `evaluators.py` | 5 | Funding arb, multi-asset funding, trend follow, mean reversion, breakout |
+| **Established** | `strategies.py` | 25 | Academic/practitioner: TSMOM, cross-sectional momentum, funding carry, mean reversion, volatility, trend following, pairs, crypto-native |
+| **Contrarian** | `contrarian.py` | 9 | Flipped signals, consensus fade, novel-state trend, disagreement breakout, funding-filtered |
+| **Beta-adjusted** | `beta_strategies.py` | 8 | Residual strategies (strip out BTC beta), BTC-led alt trading, beta-relative |
+| **Lead-lag** | `lead_lag.py` | 16 | BTC/ETH as leading indicators at 7 lag offsets (15m to 12h), multi-lag ensemble, impulse catch-up, reversal fade |
 
-### Key Findings (2yr walk-forward, 9 assets, Apr 2024–Apr 2026)
+## Key Findings
 
-**Most robust strategies (positive on the most assets):**
-- `rsi_regime_reversion` — 8/8 alts, avg +0.43% per trade
-- `residual_breakout` — 7/8 alts, +0.17% avg (trades breakouts relative to BTC, not raw price)
-- `mean_reversion` — 7/9 assets, +0.14% avg
-- `donchian_breakout` — 7/9 assets
+Walk-forward backtesting across 13 assets, Apr 2024 -- Apr 2026:
 
-**Best individual combos:**
-- ARB:rsi_regime_reversion — 81.2% WR, +0.71% mean, 16 trades
-- OP:mean_reversion — 62.3% WR, +0.50% mean, 69 trades
-- WIF:residual_breakout — 50.9% WR, +0.68% mean, 110 trades (highest total PnL)
-- LINK:btc_impulse_catch_up — 58.3% WR, +1.09% mean
+- **138 profitable strategy-asset combos** identified via walk-forward (Sharpe-ranked on training data, validated out-of-sample)
+- **Top 10 portfolio**: +26.4% annual return, 4.9% max drawdown, 1.55 profit factor
+- **Optimal exits** (2% SL + 5% TP) improve returns from +5.9% to +13.1% on the same trades
+- **Lead-lag between BTC and alts**: zero measurable lag even at 15-minute resolution
+- **Trailing stops underperform** on crypto due to high intra-bar volatility
+- **Best strategies**: mean_reversion, residual_breakout, btc_eth_ratio_rv, flip_beta_rotation, rsi_regime_reversion
+- **Alts are where the edge is**: strategies that break even on BTC are profitable on less efficient altcoin markets
+- **Beta-adjusted strategies are more robust** than raw price strategies -- trading the residual (after removing BTC influence) filters false signals
 
-**Key insight:** Alts are where the edge is. Strategies that break even on BTC are profitable on less efficient altcoin markets. Beta-adjusted strategies (trading the residual after removing BTC influence) are more robust than raw price strategies.
+## Data Availability (Hyperliquid)
 
-### Analysis Commands
-
-```bash
-# Run analog analysis on current market
-python3 -m analog.run_analysis --days 730
-
-# Walk-forward evaluation (all strategies)
-python3 -m analog.run_walkforward --days 730
-
-# Multi-asset strategy comparison (39 strategies x 9 assets)
-python3 -m analog.run_multi_asset --days 730 --top 40
-
-# Lead-lag analysis (BTC/ETH → alts)
-python3 -m analog.lead_lag --days 730
-
-# Champion/challenger arena
-python3 -m analog.run_walkforward --days 730 --arena
-```
-
-## Example Strategies (reference implementations)
-
-Three reference strategies in `strategies/examples/`:
-
-- **`funding_arb.py`** — Short when funding rates are extreme positive, long when extreme negative. Collects funding payments.
-- **`whale_copy.py`** — Track large wallets, copy their trades when multiple whales converge on the same direction within a time window.
-- **`multi_factor_signal.py`** — Combine whale consensus, AI predictions, and price momentum into a single scored signal using `CompositeScorer`.
-
-## Exchange Notes
-
-Hard-won gotchas from production in [docs/exchange-notes.md](docs/exchange-notes.md):
-
-- **Hyperliquid** — sync SDK wrapping, unified accounts, WS trade format, funding mechanics
-- **Polymarket** — negRisk detection, FOK pricing, Gamma API bugs, CLOB order placement
-- **DEX/LP** — tick math, slippage, nonce management, Algebra vs Uniswap V3 differences
-- **Bittensor** — Taostats API, alpha price normalization, emission yield calculation
-
-## Reference Implementations
-
-Sanitized versions of real trading bots built with these patterns:
-
-- [ref-perp-bot](https://github.com/CShear/ref-perp-bot) — Perpetual futures (Hyperliquid). 3 strategies, signal combiner, Telegram alerts.
-- [ref-prediction-bot](https://github.com/CShear/ref-prediction-bot) — Prediction markets (Polymarket). Whale tracking + AI ensemble.
-- [ref-lp-bot](https://github.com/CShear/ref-lp-bot) — Concentrated liquidity market making. Uniswap V3, Aerodrome, Algebra.
-- [ref-subnet-monitor](https://github.com/CShear/ref-subnet-monitor) — Bittensor subnet health dashboard. Scoring, signals, alerts.
-
-## Ground Rules
-
-1. **No secrets in the repo.** API keys, private keys, wallet addresses go in `.env` (gitignored).
-2. **Backtest before you deploy.** The backtest engine exists for a reason.
-3. **Document your strategies.** A strategy without docs is a strategy nobody else can use.
-4. **Share losses too.** We learn more from what didn't work.
-5. **Risk management is not optional.** Every strategy needs stop-losses and position limits.
+| Interval | History Available | Bars per Day |
+|----------|-------------------|:------------:|
+| 4h | 2+ years | 6 |
+| 1h | ~7 months | 24 |
+| 30m | ~3.5 months | 48 |
+| 15m | ~53 days | 96 |
 
 ## Stack
 
 - Python 3.12+, async throughout
-- `pydantic-settings` — config from `.env`
-- `aiosqlite` — async SQLite
-- `httpx` + `websockets` — REST/WS
-- `structlog` — structured logging
-- `APScheduler` — job scheduling
-- `python-telegram-bot` — notifications
-- `pandas` — data analysis
+- `pydantic-settings` -- config from `.env`
+- `httpx` -- HTTP client for Hyperliquid API
+- `structlog` -- structured logging
+- `pandas` -- data analysis
 - Exchange SDKs: `hyperliquid-python-sdk`, `py-clob-client`, `web3` (all optional)
-- AI: `anthropic`, `openai` (optional)
+
+## Ground Rules
+
+1. **No secrets in the repo.** API keys, private keys go in `.env` (gitignored).
+2. **Backtest before you deploy.** Walk-forward validation is non-negotiable.
+3. **No lookahead bias.** Training/test split. Deterministic shuffling. No sorting by future P&L.
+4. **Document your strategies.** Every strategy has a docstring citing its source.
+5. **Risk management is not optional.** Position limits, drawdown circuit breakers, kill switches.
 
 ## License
 
-MIT — use it, fork it, profit from it.
+MIT -- use it, fork it, profit from it.
