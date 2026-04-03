@@ -259,6 +259,101 @@ class HistoricalData:
             return None
         return (ema_val - mult * atr_val, ema_val, ema_val + mult * atr_val)
 
+    def simulate_exit(
+        self,
+        asset: str,
+        entry_ts: float,
+        direction: float,  # +1.0 for long, -1.0 for short
+        stop_loss: float | None = None,    # e.g., 0.03 = 3% stop
+        take_profit: float | None = None,  # e.g., 0.05 = 5% TP
+        trailing_stop: float | None = None,  # e.g., 0.02 = 2% trail from peak
+        max_hold_hours: float = 48.0,      # max hold time before forced exit
+    ) -> tuple[float, float, str] | None:
+        """Walk forward bar-by-bar from entry, checking exit conditions.
+
+        Returns (pnl_pct, hold_hours, exit_reason) or None if no entry candle found.
+        exit_reason is one of: "stop_loss", "take_profit", "trailing_stop", "time_exit"
+        """
+        COMMISSION = 0.0006
+
+        entry_idx = self.get_candle_index(asset, entry_ts)
+        if entry_idx is None:
+            return None
+
+        candles = self._candle_data[asset]
+        entry_price = candles[entry_idx].close
+        if entry_price <= 0:
+            return None
+
+        max_bars = max(1, int(max_hold_hours / self.interval_hours))
+        end_idx = min(entry_idx + max_bars, len(candles) - 1)
+
+        if entry_idx + 1 > end_idx:
+            return None
+
+        peak_pnl = 0.0  # best unrealized P&L so far (for trailing stop)
+
+        for i in range(entry_idx + 1, end_idx + 1):
+            candle = candles[i]
+            hold_hours = (i - entry_idx) * self.interval_hours
+
+            # --- Check stop-loss using intra-bar extremes ---
+            if stop_loss is not None:
+                if direction > 0:
+                    # Long: stopped if low dips enough
+                    worst_pnl = (candle.low - entry_price) / entry_price
+                else:
+                    # Short: stopped if high rises enough
+                    worst_pnl = -(candle.high - entry_price) / entry_price
+
+                if worst_pnl <= -stop_loss:
+                    exit_pnl = -stop_loss - COMMISSION
+                    return (exit_pnl, hold_hours, "stop_loss")
+
+            # --- Check take-profit using intra-bar extremes ---
+            if take_profit is not None:
+                if direction > 0:
+                    best_pnl_bar = (candle.high - entry_price) / entry_price
+                else:
+                    best_pnl_bar = -(candle.low - entry_price) / entry_price
+
+                if best_pnl_bar >= take_profit:
+                    exit_pnl = take_profit - COMMISSION
+                    return (exit_pnl, hold_hours, "take_profit")
+
+            # --- Update peak P&L for trailing stop ---
+            if direction > 0:
+                bar_peak = (candle.high - entry_price) / entry_price
+            else:
+                bar_peak = -(candle.low - entry_price) / entry_price
+
+            peak_pnl = max(peak_pnl, bar_peak)
+
+            # --- Check trailing stop ---
+            if trailing_stop is not None and peak_pnl > 0:
+                # Check if price retraced trailing_stop from peak within this bar
+                if direction > 0:
+                    # For longs, the worst point in this bar is the low
+                    bar_worst = (candle.low - entry_price) / entry_price
+                else:
+                    # For shorts, the worst point is the high
+                    bar_worst = -(candle.high - entry_price) / entry_price
+
+                if peak_pnl - bar_worst >= trailing_stop:
+                    # Trailing stop triggered; exit at peak - trail
+                    exit_pnl = peak_pnl - trailing_stop - COMMISSION
+                    return (exit_pnl, hold_hours, "trailing_stop")
+
+        # --- Time exit: close at last bar ---
+        last_candle = candles[end_idx]
+        if direction > 0:
+            final_pnl = (last_candle.close - entry_price) / entry_price
+        else:
+            final_pnl = -(last_candle.close - entry_price) / entry_price
+
+        final_hold = (end_idx - entry_idx) * self.interval_hours
+        return (final_pnl - COMMISSION, final_hold, "time_exit")
+
     def funding_window(self, ts: float, n_bars: int) -> list[dict[str, float]]:
         """Get funding rate snapshots for the last n_bars."""
         result = []
