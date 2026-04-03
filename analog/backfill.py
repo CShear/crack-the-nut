@@ -32,8 +32,31 @@ logger = structlog.get_logger()
 # --- Constants ---
 HYPERLIQUID_BASE = "https://api.hyperliquid.xyz"
 
-CANDLE_ASSETS = ["BTC", "ETH", "SOL", "DOGE", "ARB", "OP", "AVAX", "LINK", "WIF", "TAO", "HYPE", "SPX", "FARTCOIN"]
-FUNDING_ASSETS = ["BTC", "ETH", "SOL", "DOGE", "ARB", "OP", "AVAX", "LINK", "WIF", "PEPE", "TAO", "HYPE", "SPX", "FARTCOIN"]
+CANDLE_ASSETS = [
+    # Original 13
+    "BTC", "ETH", "SOL", "DOGE", "ARB", "OP", "AVAX", "LINK", "WIF", "TAO", "HYPE", "SPX", "FARTCOIN",
+    # Expansion: high-liquidity additions (Apr 2026)
+    "XRP", "XPL", "ZEC", "NEAR", "AAVE", "SUI", "kPEPE", "UNI", "ADA", "BNB", "ENA", "JUP", "ZRO", "ALGO", "PAXG",
+]
+FUNDING_ASSETS = [
+    "BTC", "ETH", "SOL", "DOGE", "ARB", "OP", "AVAX", "LINK", "WIF", "PEPE", "TAO", "HYPE", "SPX", "FARTCOIN",
+    "XRP", "XPL", "ZEC", "NEAR", "AAVE", "SUI", "kPEPE", "UNI", "ADA", "BNB", "ENA", "JUP", "ZRO", "ALGO", "PAXG",
+]
+
+# Liquidity tiers: max position as fraction of portfolio
+# Based on 1% of 24h volume rule at $100k portfolio (Apr 2026 snapshot)
+LIQUIDITY_MAX_PCT: dict[str, float] = {
+    # Tier: Full (30%) — $3M+ daily vol
+    "BTC": 0.30, "ETH": 0.30, "SOL": 0.30, "HYPE": 0.30, "XPL": 0.30,
+    "XRP": 0.30, "ZEC": 0.30, "TAO": 0.30, "FARTCOIN": 0.30, "ALGO": 0.30,
+    "NEAR": 0.30, "DOGE": 0.30, "PAXG": 0.30, "AAVE": 0.30, "SUI": 0.30,
+    "kPEPE": 0.30, "AVAX": 0.30, "JUP": 0.30, "ZRO": 0.30, "UNI": 0.30,
+    "LINK": 0.30, "ADA": 0.30, "BNB": 0.30, "ENA": 0.30,
+    # Tier: Medium (10-12%) — $1-3M daily vol
+    "WIF": 0.12, "ARB": 0.10,
+    # Tier: Small (5-6%) — $500K-1M daily vol
+    "SPX": 0.06, "OP": 0.06,
+}
 INTERVAL = "4h"
 
 INTERVAL_HOURS = {
