@@ -543,6 +543,7 @@ def build_evaluators(
     from analog.strategies import build_all_evaluators
     from analog.contrarian import build_contrarian_evaluators
     from analog.beta_strategies import build_beta_evaluators
+    from analog.lead_lag import build_lead_lag_evaluators
 
     data = HistoricalData(candles, funding, primary_asset=asset)
 
@@ -564,7 +565,10 @@ def build_evaluators(
     # 8 beta-adjusted strategies (residual, BTC-led, beta-relative)
     beta = build_beta_evaluators(data)
 
-    return {**original, **established, **contrarian, **beta}
+    # 8 lead-lag strategies (BTC/ETH lead, alts follow)
+    lead_lag = build_lead_lag_evaluators(data)
+
+    return {**original, **established, **contrarian, **beta, **lead_lag}
 
 
 def build_multi_asset_evaluators(
