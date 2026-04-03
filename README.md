@@ -111,7 +111,54 @@ cp .env.example .env  # fill in your keys
 
 See [docs/architecture.md](docs/architecture.md) for the full design walkthrough and directory conventions.
 
-## Example Strategies
+## Strategy Library (55 strategies, 5 families)
+
+The `analog/` module contains 55 backtestable strategies organized into families:
+
+| Family | File | Count | Description |
+|--------|------|:-----:|-------------|
+| **Established** | `analog/strategies.py` | 25 | Academic/practitioner strategies: TSMOM, cross-sectional momentum, funding carry, mean reversion, volatility, trend following, pairs, crypto-native |
+| **Contrarian** | `analog/contrarian.py` | 9 | Flipped signals (strategies that predict backwards), consensus fade, novel-state trend, disagreement breakout, funding-filtered |
+| **Beta-adjusted** | `analog/beta_strategies.py` | 8 | Residual strategies (strip out BTC beta), BTC-led alt trading, beta-relative |
+| **Lead-lag** | `analog/lead_lag.py` | 8 | BTC/ETH as leading indicators for alt catch-up, impulse catch-up, reversal fade |
+| **Original** | `analog/evaluators.py` | 5 | Funding arb, multi-asset funding, trend follow, mean reversion, breakout |
+
+### Key Findings (2yr walk-forward, 9 assets, Apr 2024–Apr 2026)
+
+**Most robust strategies (positive on the most assets):**
+- `rsi_regime_reversion` — 8/8 alts, avg +0.43% per trade
+- `residual_breakout` — 7/8 alts, +0.17% avg (trades breakouts relative to BTC, not raw price)
+- `mean_reversion` — 7/9 assets, +0.14% avg
+- `donchian_breakout` — 7/9 assets
+
+**Best individual combos:**
+- ARB:rsi_regime_reversion — 81.2% WR, +0.71% mean, 16 trades
+- OP:mean_reversion — 62.3% WR, +0.50% mean, 69 trades
+- WIF:residual_breakout — 50.9% WR, +0.68% mean, 110 trades (highest total PnL)
+- LINK:btc_impulse_catch_up — 58.3% WR, +1.09% mean
+
+**Key insight:** Alts are where the edge is. Strategies that break even on BTC are profitable on less efficient altcoin markets. Beta-adjusted strategies (trading the residual after removing BTC influence) are more robust than raw price strategies.
+
+### Analysis Commands
+
+```bash
+# Run analog analysis on current market
+python3 -m analog.run_analysis --days 730
+
+# Walk-forward evaluation (all strategies)
+python3 -m analog.run_walkforward --days 730
+
+# Multi-asset strategy comparison (39 strategies x 9 assets)
+python3 -m analog.run_multi_asset --days 730 --top 40
+
+# Lead-lag analysis (BTC/ETH → alts)
+python3 -m analog.lead_lag --days 730
+
+# Champion/challenger arena
+python3 -m analog.run_walkforward --days 730 --arena
+```
+
+## Example Strategies (reference implementations)
 
 Three reference strategies in `strategies/examples/`:
 
