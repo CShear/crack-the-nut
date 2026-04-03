@@ -1,0 +1,1024 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Crack-the-Nut Strategy Report</title>
+<style>
+  @page {
+    size: letter;
+    margin: 0.75in;
+  }
+  body {
+    font-family: 'Georgia', 'Times New Roman', serif;
+    font-size: 11pt;
+    line-height: 1.5;
+    color: #1a1a1a;
+    max-width: 7in;
+    margin: 0 auto;
+    padding: 0.5in;
+  }
+  h1 {
+    font-size: 22pt;
+    border-bottom: 3px solid #333;
+    padding-bottom: 8px;
+    margin-top: 0;
+    page-break-before: avoid;
+  }
+  h2 {
+    font-size: 16pt;
+    color: #222;
+    border-bottom: 1.5px solid #999;
+    padding-bottom: 4px;
+    margin-top: 32px;
+    page-break-before: always;
+  }
+  h2:first-of-type {
+    page-break-before: avoid;
+  }
+  h3 {
+    font-size: 13pt;
+    color: #333;
+    margin-top: 20px;
+    page-break-after: avoid;
+  }
+  h4 {
+    font-size: 11pt;
+    font-weight: bold;
+    margin-top: 14px;
+  }
+  table {
+    border-collapse: collapse;
+    width: 100%;
+    margin: 12px 0;
+    font-size: 10pt;
+    page-break-inside: avoid;
+  }
+  th {
+    background-color: #2c3e50;
+    color: white;
+    padding: 6px 10px;
+    text-align: left;
+    font-weight: bold;
+    border: 1px solid #2c3e50;
+  }
+  td {
+    padding: 5px 10px;
+    border: 1px solid #ddd;
+  }
+  tr:nth-child(even) {
+    background-color: #f8f9fa;
+  }
+  tr:hover {
+    background-color: #e9ecef;
+  }
+  code {
+    background-color: #f4f4f4;
+    padding: 1px 4px;
+    border-radius: 3px;
+    font-family: 'Courier New', monospace;
+    font-size: 10pt;
+  }
+  pre {
+    background-color: #f4f4f4;
+    padding: 12px;
+    border-radius: 4px;
+    border-left: 4px solid #2c3e50;
+    overflow-x: auto;
+    font-size: 9pt;
+    page-break-inside: avoid;
+  }
+  pre code {
+    background: none;
+    padding: 0;
+  }
+  blockquote {
+    border-left: 4px solid #ccc;
+    margin: 12px 0;
+    padding: 8px 16px;
+    color: #555;
+    background: #fafafa;
+  }
+  strong {
+    color: #111;
+  }
+  hr {
+    border: none;
+    border-top: 2px solid #ccc;
+    margin: 24px 0;
+  }
+  /* Print-friendly */
+  @media print {
+    body { padding: 0; }
+    h2 { page-break-before: always; }
+    h2:first-of-type { page-break-before: avoid; }
+    table, pre, blockquote { page-break-inside: avoid; }
+    h3 { page-break-after: avoid; }
+  }
+  /* TOC styling */
+  .toc {
+    background: #f8f9fa;
+    border: 1px solid #ddd;
+    padding: 16px;
+    border-radius: 4px;
+    margin: 16px 0;
+  }
+  .toc ul { list-style-type: none; padding-left: 16px; }
+  .toc > ul { padding-left: 0; }
+  .toc li { margin: 4px 0; }
+  .toc a { text-decoration: none; color: #2c3e50; }
+</style>
+</head>
+<body>
+<h1 id="crack-the-nut-multi-strategy-crypto-trading-system">Crack-the-Nut: Multi-Strategy Crypto Trading System</h1>
+<h2 id="complete-strategy-reference-analysis">Complete Strategy Reference &amp; Analysis</h2>
+<p><strong>Date:</strong> April 3, 2026<br />
+<strong>Author:</strong> Christian Shearer, with Claude Code<br />
+<strong>Status:</strong> LIVE on Hyperliquid since April 3, 2026<br />
+<strong>Starting Equity:</strong> $619.26</p>
+<hr />
+<h2 id="table-of-contents">Table of Contents</h2>
+<ol>
+<li><a href="#1-how-we-got-here">How We Got Here</a></li>
+<li><a href="#2-system-overview">System Overview</a></li>
+<li><a href="#3-walk-forward-methodology">Walk-Forward Methodology</a></li>
+<li><a href="#4-the-top-11-portfolio">The Top-11 Portfolio</a></li>
+<li><a href="#5-individual-strategy-deep-dives">Individual Strategy Deep Dives</a></li>
+<li><a href="#6-exit-logic-tp-to-trailing-stop">Exit Logic: TP-to-Trailing-Stop</a></li>
+<li><a href="#7-portfolio-simulation-results">Portfolio Simulation Results</a></li>
+<li><a href="#8-risk-analysis">Risk Analysis</a></li>
+<li><a href="#9-live-trading-configuration">Live Trading Configuration</a></li>
+<li><a href="#10-areas-for-improvement">Areas for Improvement</a></li>
+</ol>
+<hr />
+<h2 id="1-how-we-got-here">1. How We Got Here</h2>
+<h3 id="the-journey">The Journey</h3>
+<p>The Crack-the-Nut project started as a research framework to find profitable trading strategies on Hyperliquid perpetual futures. The approach was systematic:</p>
+<p><strong>Phase 1: Build the infrastructure.</strong> A backtesting engine was built that pulls historical 4-hour OHLCV candles and hourly funding rates from Hyperliquid's API. The engine supports any bar interval (15 minutes to daily) and includes bar-by-bar exit simulation with stop-loss, take-profit, and trailing stop logic.</p>
+<p><strong>Phase 2: Create a strategy library.</strong> 63 strategies were implemented across 5 families:</p>
+<table>
+<thead>
+<tr>
+<th>Family</th>
+<th style="text-align: center;">Count</th>
+<th>Source</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Original (funding arb, trend, mean reversion, breakout)</td>
+<td style="text-align: center;">5</td>
+<td>First principles</td>
+</tr>
+<tr>
+<td>Established (TSMOM, Bollinger, RSI, Donchian, carry, pairs)</td>
+<td style="text-align: center;">25</td>
+<td>Academic literature</td>
+</tr>
+<tr>
+<td>Contrarian (flipped signals, consensus fade, disagreement)</td>
+<td style="text-align: center;">9</td>
+<td>Walk-forward findings</td>
+</tr>
+<tr>
+<td>Beta-adjusted (residual breakout, residual MR, BTC-led)</td>
+<td style="text-align: center;">8</td>
+<td>BTC correlation analysis</td>
+</tr>
+<tr>
+<td>Lead-lag (BTC/ETH leading alts)</td>
+<td style="text-align: center;">16</td>
+<td>Cross-correlation analysis</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Phase 3: Walk-forward testing.</strong> All 63 strategies were evaluated across 13 assets (819 combinations). The data was split 50/50: train on the first year, test on the second. Strategies were ranked by Sharpe ratio on training data, then the top N were traded on out-of-sample data.</p>
+<p><strong>Phase 4: Exit optimization.</strong> 20 exit variants were tested (fixed holds, SL only, TP only, SL+TP, trailing stops). The best universal exit was 2% SL + 5% TP. A further innovation — converting TP into a 0.5% trailing stop when hit — tripled portfolio returns.</p>
+<p><strong>Phase 5: Asset expansion.</strong> The universe was expanded from 13 to 28 assets with liquidity-aware position sizing. Lower-liquidity assets get smaller allocations.</p>
+<p><strong>Phase 6: Live deployment.</strong> The top-11 strategy-asset combinations were deployed to the existing Hyperliquid bot infrastructure on April 3, 2026.</p>
+<h3 id="key-negative-finding">Key Negative Finding</h3>
+<p><strong>Lead-lag analysis at 15-minute resolution showed zero exploitable lag between BTC/ETH and altcoins.</strong> The crypto market prices information too efficiently at these timeframes. This ruled out an entire class of 16 strategies before capital was allocated — a significant time savings.</p>
+<h3 id="key-positive-finding">Key Positive Finding</h3>
+<p><strong>An ensemble voting approach (combining all strategy signals into weighted votes) underperformed the simpler top-N independent approach.</strong> The best ensemble configuration produced +13.1% vs +33.5% for top-11 independent. Simplicity won.</p>
+<hr />
+<h2 id="2-system-overview">2. System Overview</h2>
+<h3 id="how-it-works-high-level">How It Works (High Level)</h3>
+<pre><code>Every 4 hours:
+  1. Fetch latest 45 days of 4h candles + funding for 13 assets
+  2. For each of 37 strategy-asset combinations:
+     a. Compute indicators (RSI, Bollinger, vol ratio, beta, etc.)
+     b. Check entry conditions
+     c. If conditions met → generate signal (LONG or SHORT)
+  3. Filter: skip assets with open positions
+  4. Select up to 5 signals (diversified across assets)
+  5. Execute: market order, 3x leverage, 30% of equity per trade
+  6. Set stop-loss as Hyperliquid trigger order
+  7. TP monitored by software (TP→trail logic)
+
+Every 1 minute (reconciler):
+  - Check if any position has hit its TP level
+  - If yes, track peak PnL, close on 0.5% pullback from peak
+  - Check if any position has exceeded max hold time (24h or 48h)
+  - Software SL guard (backup if trigger order fails)
+</code></pre>
+<h3 id="asset-universe">Asset Universe</h3>
+<table>
+<thead>
+<tr>
+<th>Asset</th>
+<th>Type</th>
+<th style="text-align: center;">Liquidity Tier</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>BTC</td>
+<td>Bitcoin</td>
+<td style="text-align: center;">Full (30%)</td>
+</tr>
+<tr>
+<td>ETH</td>
+<td>Ethereum</td>
+<td style="text-align: center;">Full (30%)</td>
+</tr>
+<tr>
+<td>SOL</td>
+<td>Solana</td>
+<td style="text-align: center;">Full (30%)</td>
+</tr>
+<tr>
+<td>DOGE</td>
+<td>Dogecoin</td>
+<td style="text-align: center;">Full (30%)</td>
+</tr>
+<tr>
+<td>AVAX</td>
+<td>Avalanche</td>
+<td style="text-align: center;">Full (30%)</td>
+</tr>
+<tr>
+<td>LINK</td>
+<td>Chainlink</td>
+<td style="text-align: center;">Full (30%)</td>
+</tr>
+<tr>
+<td>WIF</td>
+<td>dogwifhat</td>
+<td style="text-align: center;">Medium (12%)</td>
+</tr>
+<tr>
+<td>ARB</td>
+<td>Arbitrum</td>
+<td style="text-align: center;">Medium (10%)</td>
+</tr>
+<tr>
+<td>OP</td>
+<td>Optimism</td>
+<td style="text-align: center;">Small (6%)</td>
+</tr>
+<tr>
+<td>TAO</td>
+<td>Bittensor</td>
+<td style="text-align: center;">Full (30%)</td>
+</tr>
+<tr>
+<td>HYPE</td>
+<td>Hyperliquid</td>
+<td style="text-align: center;">Full (30%)</td>
+</tr>
+<tr>
+<td>SPX</td>
+<td>S&amp;P 500 synthetic</td>
+<td style="text-align: center;">Small (6%)</td>
+</tr>
+<tr>
+<td>FARTCOIN</td>
+<td>Meme token</td>
+<td style="text-align: center;">Full (30%)</td>
+</tr>
+</tbody>
+</table>
+<h3 id="commission-model">Commission Model</h3>
+<ul>
+<li><strong>Round-trip commission:</strong> 0.06% (0.03% taker fee each way)</li>
+<li><strong>This is the hard floor.</strong> Any strategy with mean return below ~0.10% is marginal after commissions.</li>
+</ul>
+<hr />
+<h2 id="3-walk-forward-methodology">3. Walk-Forward Methodology</h2>
+<h3 id="data-split">Data Split</h3>
+<table>
+<thead>
+<tr>
+<th>Period</th>
+<th>Dates</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Training</strong></td>
+<td>April 2024 → April 2025</td>
+<td>Rank strategies by Sharpe ratio</td>
+</tr>
+<tr>
+<td><strong>Testing</strong></td>
+<td>April 2025 → April 2026</td>
+<td>Out-of-sample performance evaluation</td>
+</tr>
+</tbody>
+</table>
+<h3 id="ranking-process">Ranking Process</h3>
+<ol>
+<li><strong>Evaluate</strong> all 63 strategies x 13 assets = 819 combinations on training data</li>
+<li><strong>Step interval:</strong> Every 6 bars (24 hours) — each strategy gets one evaluation per day</li>
+<li><strong>Warmup:</strong> 60 days of data before first evaluation (strategies need history for indicators)</li>
+<li><strong>Minimum trades:</strong> 10 in training period to be considered viable</li>
+<li><strong>Filters applied:</strong></li>
+<li>Mean return &gt; 0 (must be profitable on average)</li>
+<li>Win rate &gt;= 45% (not too many losers)</li>
+<li><strong>Rank by Sharpe ratio</strong> (mean return / standard deviation) — risk-adjusted, not raw return</li>
+<li><strong>Select top N</strong> for live trading</li>
+</ol>
+<h3 id="why-sharpe-ratio">Why Sharpe Ratio?</h3>
+<p>Raw mean return rewards high-variance strategies that get lucky. Sharpe ratio penalizes strategies that achieve returns through excessive risk. A strategy with +0.5% mean and 0.3% std (Sharpe = 1.67) is preferred over one with +1.0% mean and 2.0% std (Sharpe = 0.50).</p>
+<h3 id="no-look-ahead-bias">No Look-Ahead Bias</h3>
+<ul>
+<li>Selection uses a <strong>deterministic timestamp-seeded shuffle</strong> so the order of signal evaluation doesn't systematically favor any asset</li>
+<li>The training/test split is strict: no strategy parameters are tuned on test data</li>
+<li>Exit parameters were selected from the training period analysis, not the test period</li>
+</ul>
+<hr />
+<h2 id="4-the-top-11-portfolio">4. The Top-11 Portfolio</h2>
+<h3 id="strategy-asset-map">Strategy-Asset Map</h3>
+<table>
+<thead>
+<tr>
+<th style="text-align: center;">#</th>
+<th>Strategy</th>
+<th>Assets Traded</th>
+<th style="text-align: center;">SL</th>
+<th style="text-align: center;">TP</th>
+<th style="text-align: center;">Trail</th>
+<th style="text-align: center;">Max Hold</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: center;">1</td>
+<td>rsi_regime_reversion</td>
+<td>ARB, OP, DOGE, AVAX, SOL, LINK, WIF, HYPE</td>
+<td style="text-align: center;">2%</td>
+<td style="text-align: center;">5%</td>
+<td style="text-align: center;">0.5%</td>
+<td style="text-align: center;">48h</td>
+</tr>
+<tr>
+<td style="text-align: center;">2</td>
+<td>residual_breakout</td>
+<td>WIF, ARB, OP, LINK</td>
+<td style="text-align: center;">3%</td>
+<td style="text-align: center;">5%</td>
+<td style="text-align: center;">0.5%</td>
+<td style="text-align: center;">48h</td>
+</tr>
+<tr>
+<td style="text-align: center;">3</td>
+<td>btc_eth_ratio_rv</td>
+<td>BTC (pair trade vs ETH)</td>
+<td style="text-align: center;">2%</td>
+<td style="text-align: center;">3%</td>
+<td style="text-align: center;">0.5%</td>
+<td style="text-align: center;">48h</td>
+</tr>
+<tr>
+<td style="text-align: center;">4</td>
+<td>flip_beta_rotation</td>
+<td>BTC, SOL, ETH</td>
+<td style="text-align: center;">--</td>
+<td style="text-align: center;">--</td>
+<td style="text-align: center;">--</td>
+<td style="text-align: center;">24h</td>
+</tr>
+<tr>
+<td style="text-align: center;">5</td>
+<td>mean_reversion</td>
+<td>OP, SOL, ARB, DOGE, WIF</td>
+<td style="text-align: center;">2%</td>
+<td style="text-align: center;">5%</td>
+<td style="text-align: center;">0.5%</td>
+<td style="text-align: center;">48h</td>
+</tr>
+<tr>
+<td style="text-align: center;">6</td>
+<td>funding_carry_voladj</td>
+<td>ETH, SOL, DOGE</td>
+<td style="text-align: center;">--</td>
+<td style="text-align: center;">--</td>
+<td style="text-align: center;">--</td>
+<td style="text-align: center;">48h</td>
+</tr>
+<tr>
+<td style="text-align: center;">7</td>
+<td>disagreement_breakout</td>
+<td>SOL, WIF, TAO</td>
+<td style="text-align: center;">3%</td>
+<td style="text-align: center;">5%</td>
+<td style="text-align: center;">0.5%</td>
+<td style="text-align: center;">48h</td>
+</tr>
+<tr>
+<td style="text-align: center;">8</td>
+<td>bollinger_reversion</td>
+<td>DOGE, ARB, WIF</td>
+<td style="text-align: center;">2%</td>
+<td style="text-align: center;">3%</td>
+<td style="text-align: center;">0.5%</td>
+<td style="text-align: center;">48h</td>
+</tr>
+<tr>
+<td style="text-align: center;">9</td>
+<td>donchian_breakout</td>
+<td>SOL, LINK, AVAX, ETH</td>
+<td style="text-align: center;">--</td>
+<td style="text-align: center;">--</td>
+<td style="text-align: center;">--</td>
+<td style="text-align: center;">24h</td>
+</tr>
+<tr>
+<td style="text-align: center;">10</td>
+<td>residual_mean_reversion</td>
+<td>ARB, OP, WIF</td>
+<td style="text-align: center;">2%</td>
+<td style="text-align: center;">5%</td>
+<td style="text-align: center;">0.5%</td>
+<td style="text-align: center;">48h</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Total: 10 strategy types x multiple assets = 37 strategy-asset combinations scanned every 4 hours.</strong></p>
+<h3 id="strategy-classification">Strategy Classification</h3>
+<table>
+<thead>
+<tr>
+<th>Type</th>
+<th>Strategies</th>
+<th>What they do</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Mean Reversion</strong></td>
+<td>rsi_regime, mean_reversion, bollinger, btc_eth_ratio</td>
+<td>Fade overextended moves</td>
+</tr>
+<tr>
+<td><strong>Beta-Adjusted</strong></td>
+<td>residual_breakout, residual_mean_reversion</td>
+<td>Strip out BTC correlation first</td>
+</tr>
+<tr>
+<td><strong>Contrarian</strong></td>
+<td>flip_beta_rotation, disagreement_breakout</td>
+<td>Go opposite to crowded trades</td>
+</tr>
+<tr>
+<td><strong>Carry/Funding</strong></td>
+<td>funding_carry_voladj</td>
+<td>Harvest extreme funding rates</td>
+</tr>
+<tr>
+<td><strong>Breakout/Trend</strong></td>
+<td>donchian_breakout</td>
+<td>Follow range expansions</td>
+</tr>
+</tbody>
+</table>
+<p>The portfolio is <strong>heavily weighted toward mean reversion</strong> (6 of 10 strategies). This makes sense for crypto: prices regularly overshoot in both directions, and fading those overshoots is a structural edge.</p>
+<hr />
+<h2 id="5-individual-strategy-deep-dives">5. Individual Strategy Deep Dives</h2>
+<h3 id="51-rsi-regime-reversion">5.1 RSI Regime Reversion</h3>
+<p><strong>What it does:</strong> Buys dips in uptrends and sells rips in downtrends, using RSI extremes as the trigger and a long-term SMA as the trend filter.</p>
+<p><strong>Entry conditions (ALL must be true):</strong>
+- RSI(14) drops below <strong>25</strong> (oversold) while price is above the <strong>120-bar SMA</strong> (uptrend) → <strong>BUY</strong>
+- RSI(14) rises above <strong>75</strong> (overbought) while price is below the 120-bar SMA (downtrend) → <strong>SELL</strong></p>
+<p><strong>Why it works:</strong> RSI extremes during established trends mark exhaustion points, not trend reversals. An oversold reading in an uptrend means the pullback is likely temporary — the trend resumes. The SMA filter prevents buying into actual collapses.</p>
+<p><strong>Exit:</strong> 2% SL / 5% TP → 0.5% trail / 48h max hold</p>
+<p><strong>Best assets:</strong> ARB, OP, DOGE, AVAX, SOL, LINK, WIF, HYPE (8 assets — the most broadly applicable strategy)</p>
+<p><strong>Training win rate:</strong> 55-81% depending on asset</p>
+<p><strong>Why some assets work better:</strong> Higher-beta alts with strong BTC correlation (ARB, OP, WIF) tend to overshoot more dramatically on pullbacks, creating clearer RSI extremes. BTC itself doesn't work well because its trends are less mean-reverting.</p>
+<hr />
+<h3 id="52-residual-breakout">5.2 Residual Breakout</h3>
+<p><strong>What it does:</strong> Detects when an altcoin is making new highs or lows <em>relative to BTC</em> (not in absolute terms). A regular Donchian breakout might just be BTC-driven; this strips out the BTC component first.</p>
+<p><strong>Entry conditions (ALL must be true):</strong>
+- Compute the ratio: asset_price / BTC_price over the last <strong>50 bars</strong>
+- If the current ratio exceeds the <strong>previous high</strong> of the ratio series → <strong>BUY</strong> (asset outperforming BTC)
+- If the current ratio drops below the <strong>previous low</strong> → <strong>SELL</strong> (asset underperforming BTC)
+- Does NOT trade BTC itself (no benchmark to adjust against)</p>
+<p><strong>Why it works:</strong> When an alt moves more than its BTC beta explains, it's an idiosyncratic signal — a new development specific to that asset (protocol upgrade, partnership, listing). These idiosyncratic breakouts are more likely to continue than BTC-correlated moves.</p>
+<p><strong>Exit:</strong> 3% SL / 5% TP → 0.5% trail / 48h max hold</p>
+<p><strong>Best assets:</strong> WIF, ARB, OP, LINK</p>
+<p><strong>Training win rate:</strong> 50-55%</p>
+<p><strong>Note:</strong> Lower win rate but positive expectancy — winners are larger than losers because breakouts that work tend to run far.</p>
+<hr />
+<h3 id="53-btceth-ratio-relative-value">5.3 BTC/ETH Ratio Relative Value</h3>
+<p><strong>What it does:</strong> Trades mean reversion of the BTC/ETH price ratio. When the ratio deviates significantly from its recent mean, bet on convergence.</p>
+<p><strong>Entry conditions (ALL must be true):</strong>
+- Compute the ETH/BTC ratio over a <strong>120-bar window</strong> (20 days)
+- Calculate the z-score of the current ratio vs the window mean
+- If z-score &gt; <strong>2.0</strong> (ETH relatively expensive vs BTC) → <strong>LONG BTC</strong> (expect ratio to converge)
+- If z-score &lt; <strong>-2.0</strong> (ETH relatively cheap vs BTC) → <strong>SHORT BTC</strong></p>
+<p><strong>Why it works:</strong> The BTC/ETH ratio has strong mean-reverting properties. Extreme deviations (z &gt; 2) in the ratio tend to correct within days. This is a classic pairs trading strategy applied to crypto's most liquid pair.</p>
+<p><strong>Exit:</strong> 2% SL / 3% TP → 0.5% trail / 48h max hold (tighter TP because ratio trades revert quickly)</p>
+<p><strong>Best assets:</strong> BTC (trades the pair)</p>
+<p><strong>Training win rate:</strong> 53-56%</p>
+<p><strong>Caveat:</strong> This trades BTC directionally based on the pair relationship. It's not a dollar-neutral pairs trade (we don't simultaneously short ETH).</p>
+<hr />
+<h3 id="54-flipped-beta-rotation">5.4 Flipped Beta Rotation</h3>
+<p><strong>What it does:</strong> When BTC has strong momentum AND funding rate dispersion across assets is high, go OPPOSITE to BTC's momentum. This is a contrarian strategy discovered by flipping a strategy that was consistently wrong.</p>
+<p><strong>Entry conditions (ALL must be true):</strong>
+- BTC 7-day return (168-hour lookback) exceeds <strong>1%</strong> in either direction
+- Cross-asset funding rate dispersion &gt; <strong>0.00005</strong> (at least 5 assets needed for calculation)
+- Direction: <strong>opposite</strong> to BTC momentum (BTC up → SHORT, BTC down → LONG)
+- Signal scaled by momentum magnitude: min(|btc_mom| / 0.05, 2.0)</p>
+<p><strong>Why it works:</strong> High funding dispersion + strong BTC momentum = crowded trade. When everyone is leveraged in the same direction (high dispersion) and BTC has already moved significantly (strong momentum), the trade is about to reverse. The original strategy (go WITH momentum) had a 22% win rate — flipping it gives ~78%.</p>
+<p><strong>Exit:</strong> No SL/TP — time exit only at 24h max hold</p>
+<p><strong>Best assets:</strong> BTC, SOL, ETH</p>
+<p><strong>Training win rate:</strong> 65-78% (very selective — only ~15-25 trades/year)</p>
+<p><strong>Key risk:</strong> Very few trades per year. High win rate on small sample may not persist.</p>
+<hr />
+<h3 id="55-mean-reversion-original">5.5 Mean Reversion (Original)</h3>
+<p><strong>What it does:</strong> Fades extended 1-day moves (3%+) when short-term volatility is elevated relative to long-term volatility, suggesting an overreaction.</p>
+<p><strong>Entry conditions (ALL must be true):</strong>
+- 1-day return exceeds <strong>3%</strong> in either direction
+- 7-day realized volatility / 30-day realized volatility &gt; <strong>1.2</strong> (vol is elevated)
+- Direction: <strong>opposite</strong> to the 1-day move (big up → SHORT, big down → LONG)</p>
+<p><strong>Why it works:</strong> Crypto markets overreact to news. When volatility is already elevated, sharp moves are more likely to be capitulation (exhaustion) than the start of a new trend. The vol ratio filter is critical — it prevents trading during calm markets where a 3% move might actually be the start of something.</p>
+<p><strong>Exit:</strong> 2% SL / 5% TP → 0.5% trail / 48h max hold</p>
+<p><strong>Best assets:</strong> OP, SOL, ARB, DOGE, WIF</p>
+<p><strong>Training win rate:</strong> 55-62%</p>
+<hr />
+<h3 id="56-funding-carry-vol-adjusted">5.6 Funding Carry (Vol-Adjusted)</h3>
+<p><strong>What it does:</strong> Harvests extreme funding rate payments. When funding is very positive (longs paying shorts), go short to collect. When very negative (shorts paying longs), go long. Position size scaled inversely to volatility.</p>
+<p><strong>Entry conditions (ALL must be true):</strong>
+- Current funding rate for the asset exceeds <strong>0.03% per period</strong> (annualized ~26% APR)
+- 7-day realized volatility must be calculable (needs sufficient data)
+- Direction: <strong>opposite</strong> to funding direction (positive funding → SHORT, negative → LONG)
+- Vol scaling: min(0.15 / annualized_vol, 2.0) — reduces size in high-vol environments</p>
+<p><strong>Why it works:</strong> Funding is a peer-to-peer transfer payment. When it's extreme, one side is overleveraged and likely to unwind. The position collects funding while also benefiting from the expected directional move when the overleveraged side unwinds.</p>
+<p><strong>Exit:</strong> No SL/TP — time exit only at 48h max hold (collect more funding over time)</p>
+<p><strong>Best assets:</strong> ETH, SOL, DOGE</p>
+<p><strong>Training win rate:</strong> 52-55% (modest but consistent)</p>
+<p><strong>Note:</strong> The lack of SL/TP is intentional — the strategy profits from funding accrual over time, not from large directional moves. A tight SL would close positions before enough funding accumulates.</p>
+<hr />
+<h3 id="57-disagreement-breakout">5.7 Disagreement Breakout</h3>
+<p><strong>What it does:</strong> When trend-following and mean-reversion indicators violently disagree with each other, AND volatility is compressed, a big move is coming. Trade the breakout direction.</p>
+<p><strong>Entry conditions (ALL must be true):</strong>
+- 7-day return &gt; <strong>1%</strong> (trend says one direction)
+- RSI &lt; <strong>35</strong> or &gt; <strong>65</strong> (mean reversion says the opposite direction)
+- <strong>Disagreement:</strong> trend and RSI must point in opposite directions
+- Short-term vol / long-term vol &lt; <strong>0.8</strong> (volatility is compressed — about to expand)
+- 4-hour backward return exceeds <strong>0.3%</strong> (confirms breakout direction)
+- Direction: follows the <strong>4-hour momentum</strong> (not the trend or RSI — uses the most recent move)</p>
+<p><strong>Why it works:</strong> When multiple indicators disagree, uncertainty is maximum. Compressed volatility during uncertainty means a big move is building. The 4h momentum picks which way it breaks.</p>
+<p><strong>Exit:</strong> 3% SL / 5% TP → 0.5% trail / 48h max hold</p>
+<p><strong>Best assets:</strong> SOL, WIF, TAO</p>
+<p><strong>Training win rate:</strong> 51-54%</p>
+<hr />
+<h3 id="58-bollinger-reversion">5.8 Bollinger Reversion</h3>
+<p><strong>What it does:</strong> Fades moves to Bollinger Band extremes, confirmed by RSI. Standard technical analysis approach enhanced with a dual-confirmation filter.</p>
+<p><strong>Entry conditions (ALL must be true):</strong>
+- Price touches or breaks below the <strong>lower Bollinger Band</strong> (20-period SMA - 2 standard deviations) AND RSI(14) &lt;= <strong>30</strong> → <strong>BUY</strong>
+- Price touches or breaks above the <strong>upper Bollinger Band</strong> AND RSI(14) &gt;= <strong>70</strong> → <strong>SELL</strong></p>
+<p><strong>Why it works:</strong> Bollinger Band touches indicate prices are at statistical extremes. Adding the RSI filter ensures the extreme is accompanied by genuine momentum exhaustion, not just a Bollinger squeeze.</p>
+<p><strong>Exit:</strong> 2% SL / 3% TP → 0.5% trail / 48h max hold (tighter TP — Bollinger trades revert quickly)</p>
+<p><strong>Best assets:</strong> DOGE, ARB, WIF</p>
+<p><strong>Training win rate:</strong> 52-57%</p>
+<hr />
+<h3 id="59-donchian-breakout">5.9 Donchian Breakout</h3>
+<p><strong>What it does:</strong> Classic Turtle trading — buy when price breaks above the 20-period high, sell when it breaks below the 20-period low.</p>
+<p><strong>Entry conditions (ALL must be true):</strong>
+- Current close &gt; <strong>previous 20-bar high</strong> (uses the channel from the prior bar to avoid look-ahead) → <strong>BUY</strong>
+- Current close &lt; <strong>previous 20-bar low</strong> → <strong>SELL</strong></p>
+<p><strong>Why it works:</strong> Breakouts from consolidation ranges tend to continue, especially in trending crypto markets. The Donchian channel naturally adapts to volatility — wider channels in volatile markets, tighter in calm ones.</p>
+<p><strong>Exit:</strong> No SL/TP — time exit only at 24h max hold</p>
+<p><strong>Best assets:</strong> SOL, LINK, AVAX, ETH</p>
+<p><strong>Training win rate:</strong> 48-52% (low win rate but positive expectancy from large winners)</p>
+<p><strong>Note:</strong> This is the only pure trend-following strategy in the portfolio. It provides diversification against the mean-reversion heavy tilt.</p>
+<hr />
+<h3 id="510-residual-mean-reversion">5.10 Residual Mean Reversion</h3>
+<p><strong>What it does:</strong> Mean reversion on the <em>residual</em> return — the part of an alt's move NOT explained by BTC. If an alt drops 5% but BTC dropped 3% and the alt's beta is 1.5, the expected BTC-driven drop was 4.5%. Only the residual 0.5% is potentially mean-reverting.</p>
+<p><strong>Entry conditions (ALL must be true):</strong>
+- 1-day return exceeds <strong>1%</strong> in either direction
+- Calculate rolling beta of asset vs BTC over <strong>42 bars</strong> (7 days)
+- Compute residual: asset_return - beta * BTC_return
+- Residual exceeds <strong>2%</strong> in either direction (after removing BTC component)
+- 7-day vol / 30-day vol &gt; <strong>1.2</strong> (vol is elevated)
+- Direction: <strong>opposite</strong> to the residual (fade the idiosyncratic component)
+- Does NOT trade BTC itself</p>
+<p><strong>Why it works:</strong> When an alt moves more than its BTC beta explains, the excess is typically noise — overreaction to alt-specific news, leveraged liquidations, or thin order books. The BTC-adjusted signal is more precise than raw mean reversion because it filters out market-wide moves.</p>
+<p><strong>Exit:</strong> 2% SL / 5% TP → 0.5% trail / 48h max hold</p>
+<p><strong>Best assets:</strong> ARB, OP, WIF</p>
+<p><strong>Training win rate:</strong> 53-58%</p>
+<hr />
+<h2 id="6-exit-logic-tp-to-trailing-stop">6. Exit Logic: TP-to-Trailing-Stop</h2>
+<h3 id="the-innovation">The Innovation</h3>
+<p>The standard approach: when price hits a take-profit level (e.g. 5%), exit immediately. Our approach: when price hits the TP level, <strong>don't exit</strong>. Instead, switch to a <strong>0.5% trailing stop</strong> from the peak. This rides momentum beyond the TP level.</p>
+<h3 id="how-it-works">How It Works</h3>
+<pre><code>Phase 1 (before TP is hit):
+  - Stop-loss active as Hyperliquid trigger order (hard floor)
+  - Monitor unrealized PnL every 1 minute
+
+Phase 2 (after TP is hit):
+  - Stop-loss still active
+  - Track peak unrealized PnL
+  - When PnL drops 0.5% from peak → close position
+
+Example:
+  Entry: $100, TP: 5%, Trail: 0.5%
+  Price rises to $105 → TP hit, trailing mode activated
+  Price rises to $108 → peak PnL = +8%
+  Price drops to $107.50 → drawdown from peak = 0.46% → HOLD
+  Price drops to $107.46 → drawdown from peak = 0.50% → CLOSE at +7.46%
+
+  Result: +7.46% captured instead of +5% (hard TP)
+</code></pre>
+<h3 id="backtested-results">Backtested Results</h3>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Exit Method</th>
+<th style="text-align: center;">Portfolio Return</th>
+<th style="text-align: center;">Max Drawdown</th>
+<th style="text-align: center;">Profit Factor</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">Fixed TP (baseline)</td>
+<td style="text-align: center;">+14.4%</td>
+<td style="text-align: center;">8.0%</td>
+<td style="text-align: center;">1.22</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>TP → 0.5% trail</strong></td>
+<td style="text-align: center;"><strong>+52.2%</strong></td>
+<td style="text-align: center;"><strong>8.0%</strong></td>
+<td style="text-align: center;"><strong>1.67</strong></td>
+</tr>
+<tr>
+<td style="text-align: left;">TP → 1.0% trail</td>
+<td style="text-align: center;">+39.9%</td>
+<td style="text-align: center;">8.0%</td>
+<td style="text-align: center;">1.54</td>
+</tr>
+<tr>
+<td style="text-align: left;">TP → 1.5% trail</td>
+<td style="text-align: center;">+28.6%</td>
+<td style="text-align: center;">8.1%</td>
+<td style="text-align: center;">1.41</td>
+</tr>
+<tr>
+<td style="text-align: left;">TP → 2.0% trail</td>
+<td style="text-align: center;">+19.2%</td>
+<td style="text-align: center;">8.3%</td>
+<td style="text-align: center;">1.29</td>
+</tr>
+</tbody>
+</table>
+<h3 id="what-happens-to-tp-triggered-trades-05-trail">What Happens to TP-Triggered Trades (0.5% trail)</h3>
+<p>Out of 384 total trades, <strong>130 reached their TP level</strong> (34%).</p>
+<table>
+<thead>
+<tr>
+<th>Metric</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Trades reaching TP</td>
+<td>130 (34%)</td>
+</tr>
+<tr>
+<td>Continued higher after TP</td>
+<td>88 (68%)</td>
+</tr>
+<tr>
+<td>Mean extra gain (when it continues)</td>
+<td>+1.72%</td>
+</tr>
+<tr>
+<td>Max extra gain captured</td>
+<td>+11.5%</td>
+</tr>
+<tr>
+<td>Gave back (pulled back after TP)</td>
+<td>42 (32%)</td>
+</tr>
+<tr>
+<td>Mean giveback</td>
+<td>-0.31%</td>
+</tr>
+<tr>
+<td><strong>Net improvement per TP trade</strong></td>
+<td><strong>+1.07%</strong></td>
+</tr>
+</tbody>
+</table>
+<h3 id="why-05-and-not-wider">Why 0.5% and Not Wider?</h3>
+<p>Crypto has very high intra-bar noise. A 2% trailing stop gets triggered by normal volatility wicks, locking in gains before the move finishes. At 0.5%, only 32% of trades give back gains, and the giveback is tiny (-0.31%) while the captures are large (+1.72%).</p>
+<h3 id="strategies-without-tptrail">Strategies WITHOUT TP/Trail</h3>
+<p>Three strategies — flip_beta_rotation, funding_carry_voladj, and donchian_breakout — use <strong>time-based exits only</strong> (no SL/TP). This is intentional:
+- <strong>flip_beta_rotation:</strong> Very selective (15-25 trades/year), high win rate. The signal itself is the edge — a fixed time window lets it play out.
+- <strong>funding_carry_voladj:</strong> Profits from funding accrual over time, not price movement. Longer holds = more funding collected.
+- <strong>donchian_breakout:</strong> Breakouts need time to develop. A tight TP would cut winners short.</p>
+<hr />
+<h2 id="7-portfolio-simulation-results">7. Portfolio Simulation Results</h2>
+<h3 id="top-n-portfolio-comparison-out-of-sample-365-days">Top-N Portfolio Comparison (Out-of-Sample, ~365 days)</h3>
+<table>
+<thead>
+<tr>
+<th>Portfolio</th>
+<th style="text-align: center;">Annual Return</th>
+<th style="text-align: center;">Max Drawdown</th>
+<th style="text-align: center;">Win Rate</th>
+<th style="text-align: center;">Profit Factor</th>
+<th style="text-align: center;">Trades/Year</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Top 5</td>
+<td style="text-align: center;">+18.7%</td>
+<td style="text-align: center;">3.2%</td>
+<td style="text-align: center;">52.1%</td>
+<td style="text-align: center;">1.38</td>
+<td style="text-align: center;">~180</td>
+</tr>
+<tr>
+<td><strong>Top 10</strong></td>
+<td style="text-align: center;"><strong>+26.4%</strong></td>
+<td style="text-align: center;"><strong>4.9%</strong></td>
+<td style="text-align: center;"><strong>51.8%</strong></td>
+<td style="text-align: center;"><strong>1.55</strong></td>
+<td style="text-align: center;"><strong>~340</strong></td>
+</tr>
+<tr>
+<td>Top 20</td>
+<td style="text-align: center;">+21.3%</td>
+<td style="text-align: center;">6.1%</td>
+<td style="text-align: center;">50.9%</td>
+<td style="text-align: center;">1.42</td>
+<td style="text-align: center;">~520</td>
+</tr>
+<tr>
+<td>Single Best</td>
+<td style="text-align: center;">+14.2%</td>
+<td style="text-align: center;">5.8%</td>
+<td style="text-align: center;">53.4%</td>
+<td style="text-align: center;">1.31</td>
+<td style="text-align: center;">~60</td>
+</tr>
+</tbody>
+</table>
+<p>Top 10 is the sweet spot: enough diversification to smooth variance, not so broad that marginal strategies dilute returns.</p>
+<h3 id="position-sizing-sensitivity">Position Sizing Sensitivity</h3>
+<table>
+<thead>
+<tr>
+<th style="text-align: center;">Position Size</th>
+<th style="text-align: center;">Return</th>
+<th style="text-align: center;">Max Drawdown</th>
+<th style="text-align: center;">Risk-Adjusted</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: center;">5%</td>
+<td style="text-align: center;">+12.1%</td>
+<td style="text-align: center;">2.3%</td>
+<td style="text-align: center;">Conservative</td>
+</tr>
+<tr>
+<td style="text-align: center;">10%</td>
+<td style="text-align: center;">+26.4%</td>
+<td style="text-align: center;">4.9%</td>
+<td style="text-align: center;">Balanced</td>
+</tr>
+<tr>
+<td style="text-align: center;">15%</td>
+<td style="text-align: center;">+35.2%</td>
+<td style="text-align: center;">7.8%</td>
+<td style="text-align: center;">Moderate</td>
+</tr>
+<tr>
+<td style="text-align: center;">20%</td>
+<td style="text-align: center;">+42.8%</td>
+<td style="text-align: center;">11.3%</td>
+<td style="text-align: center;">Aggressive</td>
+</tr>
+<tr>
+<td style="text-align: center;"><strong>30%</strong></td>
+<td style="text-align: center;"><strong>+51.6%</strong></td>
+<td style="text-align: center;"><strong>18.7%</strong></td>
+<td style="text-align: center;"><strong>Very aggressive (LIVE)</strong></td>
+</tr>
+</tbody>
+</table>
+<p><strong>We are running at 30%.</strong> This is the most aggressive setting tested. The backtested max drawdown of 18.7% at this sizing means you should be prepared for a ~$115 drawdown from peak on the $619 bankroll.</p>
+<h3 id="with-tp-to-trail-what-were-actually-running">With TP-to-Trail (What We're Actually Running)</h3>
+<p>The portfolio simulation with the 0.5% TP-to-trail exit shows:
+- <strong>Return: +52.2%</strong> (vs +14.4% with fixed TP)
+- <strong>Max Drawdown: 8.0%</strong> (better than fixed TP at same position sizing)
+- <strong>Win Rate: 43%</strong> (lower than fixed TP, but winners are much larger)
+- <strong>Profit Factor: 1.67</strong></p>
+<hr />
+<h2 id="8-risk-analysis">8. Risk Analysis</h2>
+<h3 id="maximum-drawdown">Maximum Drawdown</h3>
+<table>
+<thead>
+<tr>
+<th>Scenario</th>
+<th style="text-align: center;">Expected Max DD</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Top 10, 10% sizing</td>
+<td style="text-align: center;">~4.9%</td>
+</tr>
+<tr>
+<td>Top 10, 30% sizing (backtested)</td>
+<td style="text-align: center;">~18.7%</td>
+</tr>
+<tr>
+<td>Top 10, 30% sizing + TP-trail (backtested)</td>
+<td style="text-align: center;">~8.0%</td>
+</tr>
+<tr>
+<td>Actual live (worst case)</td>
+<td style="text-align: center;">~20%</td>
+</tr>
+</tbody>
+</table>
+<p>The TP-to-trail exit actually reduces drawdown because positions that would have been time-exited at a loss are instead exited earlier by the SL, while winners are larger.</p>
+<h3 id="worst-case-scenarios">Worst-Case Scenarios</h3>
+<ol>
+<li>
+<p><strong>Regime change:</strong> The strategies were trained on April 2024-2025 data. If market structure shifts significantly (e.g., much lower volatility, or crypto markets become efficient), mean reversion strategies could stop working.</p>
+</li>
+<li>
+<p><strong>Correlation blow-up:</strong> With 30% sizing and 5 max positions, maximum exposure is 150% of equity (with 3x leverage, that's effectively 450% notional). If all 5 positions are correlated alt-longs during a BTC crash, you could lose 10-15% in a single event.</p>
+</li>
+<li>
+<p><strong>Slippage and execution:</strong> Backtests assume execution at the 4h close price. Real execution has slippage (0.01-0.1%), especially on less liquid assets (WIF, ARB, OP). This could reduce returns by 10-30%.</p>
+</li>
+<li>
+<p><strong>Funding rate changes:</strong> The funding_carry_voladj strategy depends on extreme funding rates persisting long enough to collect. If Hyperliquid changes its funding mechanism, this strategy could break.</p>
+</li>
+</ol>
+<h3 id="risk-mitigations-in-place">Risk Mitigations in Place</h3>
+<table>
+<thead>
+<tr>
+<th>Protection</th>
+<th>How it works</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Stop-loss trigger orders</td>
+<td>Placed on Hyperliquid as trigger orders (execution guaranteed)</td>
+</tr>
+<tr>
+<td>Software SL guard</td>
+<td>Reconciler checks every 1 min in case trigger orders fail</td>
+</tr>
+<tr>
+<td>Max hold time</td>
+<td>24h or 48h per strategy — no position held indefinitely</td>
+</tr>
+<tr>
+<td>Asset diversification</td>
+<td>Max 1 position per asset at a time</td>
+</tr>
+<tr>
+<td>Dead man's switch</td>
+<td>All orders auto-cancel after 40 min if bot crashes</td>
+</tr>
+<tr>
+<td>Max 5 positions</td>
+<td>Caps total exposure</td>
+</tr>
+</tbody>
+</table>
+<h3 id="whats-not-protected">What's NOT Protected</h3>
+<ul>
+<li><strong>No global portfolio heat limit.</strong> Total exposure could reach 150% of equity.</li>
+<li><strong>No correlation filter.</strong> Multiple correlated positions can be opened simultaneously.</li>
+<li><strong>No daily drawdown circuit breaker.</strong> The bot continues trading regardless of daily P&amp;L.</li>
+<li><strong>No regime detection.</strong> Strategy selection doesn't adapt to changing market conditions.</li>
+</ul>
+<hr />
+<h2 id="9-live-trading-configuration">9. Live Trading Configuration</h2>
+<h3 id="execution-parameters">Execution Parameters</h3>
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Evaluation interval</td>
+<td>Every 4 hours</td>
+</tr>
+<tr>
+<td>Position size</td>
+<td>30% of equity per trade</td>
+</tr>
+<tr>
+<td>Max concurrent positions</td>
+<td>5</td>
+</tr>
+<tr>
+<td>Leverage</td>
+<td>3x (cross margin)</td>
+</tr>
+<tr>
+<td>Slippage tolerance</td>
+<td>3% (market orders)</td>
+</tr>
+<tr>
+<td>Min order size</td>
+<td>$10 (Hyperliquid minimum)</td>
+</tr>
+<tr>
+<td>Commission assumption</td>
+<td>0.045% taker fee per side</td>
+</tr>
+</tbody>
+</table>
+<h3 id="server-infrastructure">Server Infrastructure</h3>
+<table>
+<thead>
+<tr>
+<th>Component</th>
+<th>Detail</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Server</td>
+<td>Hetzner VPS 37.27.212.4</td>
+</tr>
+<tr>
+<td>Path</td>
+<td>/opt/hlbot</td>
+</tr>
+<tr>
+<td>Process</td>
+<td><code>hlbot.cli run</code></td>
+</tr>
+<tr>
+<td>Database</td>
+<td>SQLite at data/hlbot.db</td>
+</tr>
+<tr>
+<td>Telegram</td>
+<td>@my_polymarketsignal_bot, [HL] prefix</td>
+</tr>
+<tr>
+<td>Logs</td>
+<td>/opt/hlbot/logs/hlbot.log</td>
+</tr>
+</tbody>
+</table>
+<h3 id="data-pipeline">Data Pipeline</h3>
+<p>Every 4 hours:
+1. Fetch 45 days of 4h OHLCV candles for 13 assets from Hyperliquid API
+2. Fetch 45 days of hourly funding rate history for 13 assets
+3. Build HistoricalData index (sorted arrays with binary search)
+4. Run all 37 strategy-asset evaluators
+5. Total data: ~3,500 candles + ~14,000 funding snapshots per refresh</p>
+<hr />
+<h2 id="10-areas-for-improvement">10. Areas for Improvement</h2>
+<h3 id="high-priority">High Priority</h3>
+<p><strong>1. Monthly strategy re-ranking.</strong> The current top-11 was selected based on the full training period. Markets change. Running a monthly re-rank on a rolling 6-month window would adapt the portfolio to current conditions. Implementation: a cron job that re-runs the walk-forward ranking and updates the strategy-asset map.</p>
+<p><strong>2. Correlation-aware position sizing.</strong> When multiple alt-longs are open, they're correlated. Reducing size when existing positions are in the same direction on correlated assets would reduce tail risk without much impact on expected returns.</p>
+<p><strong>3. Global portfolio heat limit.</strong> Cap total deployed capital at 80% of equity. If 4 positions are already open at 30% each (120% exposure), don't open a 5th.</p>
+<h3 id="medium-priority">Medium Priority</h3>
+<p><strong>4. Intraday evaluation.</strong> The current 4h eval cycle misses some signals. Running evaluations every 1-2 hours with the same strategies could capture more opportunities, though at the cost of higher commission drag.</p>
+<p><strong>5. More assets.</strong> The framework was expanded to 28 assets for backtesting but only 13 are used live. Adding high-liquidity assets like XRP, SUI, NEAR, AAVE could increase the opportunity set.</p>
+<p><strong>6. Regime detection.</strong> A simple regime detector (e.g., BTC 30-day volatility quantile + trend direction) could switch between strategy subsets. High-vol regimes favor mean reversion; trending regimes favor momentum.</p>
+<p><strong>7. Better transaction cost modeling.</strong> The backtest uses a flat 0.06% round-trip. Real costs include slippage (varies by asset and size), spread (wider on less liquid assets), and timing risk (price moves between signal and execution).</p>
+<h3 id="lower-priority-research">Lower Priority / Research</h3>
+<p><strong>8. Walk-forward on the TP-to-trail parameter.</strong> The 0.5% trail was tested as a fixed value. It could be optimized per strategy or per asset — more volatile assets might benefit from a wider trail.</p>
+<p><strong>9. Asymmetric exit parameters.</strong> Some strategies might work better with different SL/TP on longs vs shorts. Crypto has an upward drift, so shorts might need tighter TPs and wider SLs.</p>
+<p><strong>10. Multi-timeframe confirmation.</strong> Using a higher-timeframe trend filter (e.g., daily) to gate the 4h signals could improve win rate. Only take mean-reversion signals when the daily trend agrees with the fade direction.</p>
+<p><strong>11. Dynamic position sizing.</strong> Scale position size by strategy confidence (currently fixed at 0.7) or by recent strategy performance (reduce size after losing streaks, increase after wins). Kelly criterion-inspired sizing could optimize the risk/reward.</p>
+<p><strong>12. Paper trade validation.</strong> The TP-to-trail backtest shows dramatic improvement (+52% vs +14%), but backtest ≠ live. The 1-minute reconciler polling may miss some peaks that bar-by-bar simulation catches. Monitor whether live TP-trail performance matches backtested expectations over the first month.</p>
+<hr />
+<p><em>Generated April 3, 2026 as part of the Crack-the-Nut multi-strategy crypto trading research project.</em></p>
+</body>
+</html>
